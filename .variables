@@ -1,0 +1,6 @@
+# NOTE
+# you can customize these variables for your system defining them in a non-version-controlled `.local_variables`
+# you can also create a non-version-controlled `.secrets` file with your secrets
+# both files, `.local_variables` and `.secrets`, are ignored by git and are loaded up by the `helper.sh` script
+
+export PYPI_USER="__token__"
