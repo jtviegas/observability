@@ -1,0 +1,130 @@
+[project]
+name = "tgedr-observability"
+version = "0.0.1"
+description = "this is a template for a python package"
+authors = [
+    {name = "developer",email = "developer@email.com"}
+]
+readme = "README.md"
+
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+    "pandas>=2.3.0,<3.0.0",
+    "tgedr-pycommons>=1.2.1",
+]
+[dependency-groups]
+dev = [
+    "pre-commit~=4.2.0",
+    "pytest~=8.3.5",
+    "pytest-bdd~=8.1.0",
+    "pytest-cov~=4.1.0",
+    "pytest-mock~=3.15.0",
+    "ruff==0.9.10",
+    "bandit==1.8.3",
+    "safety==3.5.1",
+    "typer<0.17.0",
+    "genbadge[coverage]>=1.1.3",
+    "ipykernel>=7.2.0",
+    "jupyter>=1.1.1",
+    "ipywidgets>=8.1.8",
+    "python-dotenv>=1.2.2",
+]
+
+# [project.scripts]
+# run = "tgedr_pycommons.cicd.entrypoint:entrypoint" 
+
+[build-system]
+requires = ["uv-build>=0.6,<1.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "tgedr_observability"
+
+[tool.coverage.paths]
+source = ["src/"]
+
+[tool.coverage.run]
+source = ["src/"]
+include = ["src/*"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+    "*/venv/*",
+    "*/.venv/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
+skip_empty = false
+
+[tool.pytest.ini_options]
+# bdd_features_base_dir = "documentation/features"
+pythonpath = "."
+
+
+[tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+    "tests/",
+    "typings/"
+]
+
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D203", "S101", "D104", "INP001", "D213", "COM812", "I001", 
+    "D401", "D407", "RET504", "PLR2004", "FA102", "E501", "EXE002", "PLR0913", 
+    "PLR0912", "C901", "PLR0911", "G004", "D413"]
+fixable = ["ALL"]
+unfixable = []
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

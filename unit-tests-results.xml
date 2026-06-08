@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="2.019" timestamp="2026-06-08T18:39:26.589928+02:00" hostname="MACJ52TFXLR42"><testcase classname="test.tgedr_observability.test_example" name="test_example" time="0.003" /></testsuite></testsuites>

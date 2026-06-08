@@ -1,0 +1,52 @@
+name: cicd
+
+env:
+  TEST_COVERAGE_THRESHOLD: 100
+
+on:
+  push:
+    branches:
+      - "*"
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+' 
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: '0'
+    - uses: actions/setup-java@v4
+      with:
+        distribution: 'corretto'
+        java-version: '8'
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    - name: 'install uv'
+      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+    - name: install requirements
+      run: ./helper.sh reqs
+    - name: "run SAST test (bandit)"
+      run: ./helper.sh sast_check
+    - name: "run SCA test (safety)"
+      run: ./helper.sh sca_check
+      env:
+        SAFETY_KEY: ${{ secrets.SAFETY_KEY }} 
+    - name: check code linting
+      run: ./helper.sh linter_check  
+    - name: run unit tests
+      run: ./helper.sh test
+    - name: check coverage
+      run: ./helper.sh test_coverage_check $TEST_COVERAGE_THRESHOLD
+    - name: build
+      run: ./helper.sh build
+    - name: publish
+      run: |
+        if [[ ${{ github.ref }} =~ refs/tags/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          ./helper.sh publish
+        else
+          echo "invalid semver tag"
+        fi
+      env:
+        PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
