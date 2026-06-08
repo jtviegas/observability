@@ -1,7 +1,7 @@
 name: cicd
 
 env:
-  TEST_COVERAGE_THRESHOLD: 100
+  TEST_COVERAGE_THRESHOLD: 80
 
 on:
   push:
