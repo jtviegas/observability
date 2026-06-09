@@ -50,3 +50,9 @@ jobs:
         fi
       env:
         PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    - name: deploy
+      if: github.ref == 'refs/heads/main'
+      run: ./helper.sh deploy
+      
+
+   

@@ -182,3 +182,4 @@ tests-results.xml
 CHANGELOG
 .vscode
 .bashutils.last_check
+.tmp/

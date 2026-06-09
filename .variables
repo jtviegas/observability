@@ -4,3 +4,14 @@
 # both files, `.local_variables` and `.secrets`, are ignored by git and are loaded up by the `helper.sh` script
 
 export PYPI_USER="__token__"
+
+export TMP_DIR=".tmp"
+export OUTPUT_DIR="output"
+export DOCKER_DIR=docker
+export OTEL_COLLECTOR_IMG_NAME="otel/opentelemetry-collector"
+export OTEL_COLLECTOR_IMG_VERSION="0.153.0"
+export OTEL_COLLECTOR_IMG="${OTEL_COLLECTOR_IMG_NAME}:${OTEL_COLLECTOR_IMG_VERSION}"
+# override it for you local system in .local_variables
+export GOBIN="/opt/homebrew/bin/go"
+export CUSTOM_COLLECTOR_IMAGE=tgedr/otel-collector-fs
+export CONTAINER_NAME="otel-collector"
