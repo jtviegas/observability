@@ -193,19 +193,41 @@ reqs(){
   _pwd=`pwd`
   cd "$this_folder"
 
+  which uv >/dev/null 2>&1
+  if [ "$?" -ne "0" ]; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    [ "$?" -ne "0" ]  && err "[reqs] could not install uv" && exit 1
+    source $HOME/.local/bin/env 
+  fi
+
   uv sync --group dev
-  local result="$?"
-  if [ ! "$result" -eq "0" ] ; then err "[reqs] could not install dependencies"; fi
+  [ "$?" -ne "0" ] && err "[reqs] could not install dependencies" && exit 1
+
+  which go >/dev/null 2>&1
+  if [ "$?" -ne "0" ]; then
+    rm -rf /usr/local/go
+    curl -O -L https://go.dev/dl/go1.26.4.linux-amd64.tar.gz
+    tar -C /usr/local -xzf go1.26.4.linux-amd64.tar.gz && export PATH=$PATH:/usr/local/go/bin
+    [ "$?" -ne "0" ]  && err "[reqs] could not install go" && exit 1
+  fi
   
-  go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
+  which $GOBIN/telemetrygen >/dev/null 2>&1
+  if [ "$?" -ne "0" ]; then
+    go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
+    [ "$?" -ne "0" ] && err "[reqs] could not install telemetrygen" && exit 1
+  fi
 
   cd "$_pwd"
-
-  local msg="[reqs|out] => ${result}"
-  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
-  info "$msg"
+  info "[reqs|out]"
 }
 
+send_msg_to_collector(){
+  info "[send_msg_to_collector|in]"
+
+  $GOBIN/telemetrygen traces --otlp-insecure --otlp-http --traces 1
+
+  info "[send_msg_to_collector|out]"
+}
 
 test_collector(){
   info "[test_collector|in]"
@@ -217,7 +239,7 @@ test_collector(){
   docker run -p 4317:4317 -p 4318:4318 -p 55679:55679 --name test-collector "$OTEL_COLLECTOR_IMG" &
   sleep 3
   info "[test_collector] generating test traces with telemetrygen"
-  $GOBIN/telemetrygen traces --otlp-insecure --traces 3
+  $GOBIN/telemetrygen traces --otlp-insecure --otlp-http --traces 3
   sleep 6
   info "[test_collector] stopping test collector container"
   docker rm -f test-collector
@@ -319,6 +341,45 @@ setup_debian(){
 }
 
 
+proxmox_get_first_node_id(){
+  [ -z "$1" ] && err "HOST variable is not set" && exit 1
+  [ -z "$2" ] && err "AUTH_HEADER variable is not set" && exit 1
+  local HOST="$1"
+  local AUTH_HEADER="$2"
+
+  local response=$(curl -k https://$HOST:8006/api2/json/nodes -H "$AUTH_HEADER")
+  id=$(echo "$response" | jq -r '.data[0].id')
+  echo "$id"
+}
+
+setup_remote_docker(){
+  info "[setup_remote_docker|in]"
+
+  docker context create myhost --docker "host=ssh://user@docker-host"
+docker --context myhost ps
+docker --context myhost run -d --name test nginx
+
+  local node_id=$(proxmox_get_first_node_id "$MYPROC_HOST" "$MYPROC_API_AUTH_HEADER")
+  info "[setup_remote_docker] first Proxmox node ID: $node_id"
+  local result="$?"
+  local msg="[setup_remote_docker|out] => ${result}"
+  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
+  info "$msg"
+}
+
+deploy(){
+  info "[deploy|in]"
+  
+  # --- placeholder for deployment steps
+  local node_id=$(proxmox_get_first_node_id "$MYPROC_HOST" "$MYPROC_API_AUTH_HEADER")
+  info "[deploy] first Proxmox node ID: $node_id"
+  local result="$?"
+  local msg="[deploy|out] => ${result}"
+  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
+  info "$msg"
+}
+
+
 # <=== MAIN SECTION END  <===
 
 
@@ -343,6 +404,7 @@ usage() {
       - build_docker_image                     builds the OpenTelemetry Collector Docker image
       - run_collector                         runs the OpenTelemetry Collector Docker image
       - setup_debian                          installs docker, docker-compose and python 3.12 on Debian OS
+      - deploy                                deploys the application
 EOM
   exit 1
 }
@@ -390,6 +452,9 @@ case "$1" in
     ;;
   setup_debian)
     setup_debian
+    ;;
+  deploy)
+    deploy
     ;;
   *)
     usage

@@ -8,7 +8,7 @@ receivers:
 
 exporters:
   file:
-    path: /output/telemetry.json
+    path: /var/lib/otelcol/telemetry.json
     flush_interval: 60s
     rotation:
       max_megabytes: 100
