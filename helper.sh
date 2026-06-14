@@ -221,31 +221,55 @@ reqs(){
   info "[reqs|out]"
 }
 
-send_msg_to_collector(){
-  info "[send_msg_to_collector|in]"
 
-  $GOBIN/telemetrygen traces --otlp-insecure --otlp-http --traces 1
+build_push_collector(){
+  info "[build_push_collector|in]"
+  _pwd=`pwd`
 
-  info "[send_msg_to_collector|out]"
+  cd "$this_folder/$COLLECTOR_DOCKER_DIR"
+
+  docker build --build-arg OTEL_COLLECTOR_IMG_VERSION="$OTEL_COLLECTOR_IMG_VERSION" -t "$CUSTOM_COLLECTOR_IMAGE" . \
+    && docker push "$CUSTOM_COLLECTOR_IMAGE"
+  local result="$?"
+  if [ ! "$result" -eq "0" ] ; then err "[build_push_collector] failed to build the docker image"; fi
+  cd "$_pwd"
+
+  local msg="[build_push_collector|out] => ${result}"
+  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
+  info "$msg"
 }
 
 test_collector(){
   info "[test_collector|in]"
+
   _pwd=`pwd`
   cd "$this_folder"
 
-  
-  docker pull "$OTEL_COLLECTOR_IMG"
-  docker run -p 4317:4317 -p 4318:4318 -p 55679:55679 --name test-collector "$OTEL_COLLECTOR_IMG" &
-  sleep 3
-  info "[test_collector] generating test traces with telemetrygen"
-  $GOBIN/telemetrygen traces --otlp-insecure --otlp-http --traces 3
+  docker pull "$CUSTOM_COLLECTOR_IMAGE"
+  docker run -p 4318:4318 --name test-collector "$CUSTOM_COLLECTOR_IMAGE" &
   sleep 6
+
+  info "[test_collector] generating test trace with telemetrygen"
+  $TELEMETRYGEN_BIN traces --otlp-insecure --otlp-http --traces 1
+  local result="$?"
+  info "[test_collector] sent trace to be processed by the collector: $result"
+  sleep 3
+
+  info "[test_collector] generating test metric with telemetrygen"
+  $TELEMETRYGEN_BIN metrics --otlp-insecure --otlp-http --metrics 1
+  [  "$result" -eq "0" ] && result="$?"
+  info "[test_collector] sent metric to be processed by the collector: $result"
+  sleep 3
+
+  info "[test_collector] generating test log with telemetrygen"
+  $TELEMETRYGEN_BIN logs --otlp-insecure --otlp-http --logs 1
+  [  "$result" -eq "0" ] && result="$?"
+  info "[test_collector] sent log to be processed by the collector: $result"
+  sleep 3
+
   info "[test_collector] stopping test collector container"
   docker rm -f test-collector
 
-  local result="$?"
-  if [ ! "$result" -eq "0" ] ; then err "[test_collector] tests failed"; fi
   cd "$_pwd"
 
   local msg="[test_collector|out] => ${result}"
@@ -253,39 +277,67 @@ test_collector(){
   info "$msg"
 }
 
-build_docker_image(){
-  info "[build_docker_image|in]"
-  _pwd=`pwd`
+test_observability_suite(){
+  info "[test_observability_suite|in]"
 
-  cd "$this_folder/$DOCKER_DIR"
+  _pwd=$(pwd)
+  cd "$this_folder/$OBSERVABILITY_DIR"
 
-  docker build --build-arg OTEL_COLLECTOR_IMG_VERSION="$OTEL_COLLECTOR_IMG_VERSION" -t "$CUSTOM_COLLECTOR_IMAGE" . \
-    && docker push "$CUSTOM_COLLECTOR_IMAGE"
+  docker compose -p observability up -d
   local result="$?"
-  if [ ! "$result" -eq "0" ] ; then err "[build_docker_image] failed to build the docker image"; fi
+  [ "$result" -ne "0" ] && err "[test_observability_suite] failed to start the observability suite" && cd "$_pwd" && exit 1
+
+   info "[test_observability_suite] generating test trace with telemetrygen"
+  $TELEMETRYGEN_BIN traces --otlp-insecure --otlp-http --traces 1
+  local result="$?"
+  info "[test_observability_suite] sent trace to be processed by the collector: $result"
+
+  info "[test_observability_suite] generating test metric with telemetrygen"
+  $TELEMETRYGEN_BIN metrics --otlp-insecure --otlp-http --metrics 1
+  [  "$result" -eq "0" ] && result="$?"
+  info "[test_observability_suite] sent metric to be processed by the collector: $result"
+
+  info "[test_observability_suite] generating test log with telemetrygen"
+  $TELEMETRYGEN_BIN logs --otlp-insecure --otlp-http --logs 1
+  [  "$result" -eq "0" ] && result="$?"
+  info "[test_observability_suite] sent log to be processed by the collector: $result"
+
+  docker compose logs -f
+  docker compose -p observability down
+
   cd "$_pwd"
 
-  local msg="[build_docker_image|out] => ${result}"
+  local msg="[test_observability_suite|out] => ${result}"
   [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
   info "$msg"
 }
 
-run_collector(){
-  info "[run_collector|in]"
+push_data_to_collector(){
+  info "[push_data_to_collector|in]"
 
   _pwd=`pwd`
   cd "$this_folder"
-  
-  [ -d "$this_folder/${TMP_DIR}" ] || mkdir "$this_folder/${TMP_DIR}"
-  cd "$this_folder/${TMP_DIR}"
-  [ -d "${OUTPUT_DIR}" ] || mkdir "${OUTPUT_DIR}"
 
-  docker run --rm -p 4317:4317 -p 4318:4318 -v "./${OUTPUT_DIR}:/${OUTPUT_DIR}" --name "$CONTAINER_NAME" "$CUSTOM_COLLECTOR_IMAGE"
+
+  info "[push_data_to_collector] generating test trace with telemetrygen"
+  $TELEMETRYGEN_BIN traces --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --traces 3
   local result="$?"
-  if [ ! "$result" -eq "0" ] ; then err "[run_collector] failed to run the collector"; fi
+  info "[push_data_to_collector] sent trace to be processed by the collector: $result"
+
+  info "[push_data_to_collector] generating test metric with telemetrygen"
+  $TELEMETRYGEN_BIN metrics --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --metrics 3
+  [  "$result" -eq "0" ] && result="$?"
+  info "[push_data_to_collector] sent metric to be processed by the collector: $result"
+
+  info "[push_data_to_collector] generating test log with telemetrygen"
+  $TELEMETRYGEN_BIN logs --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --logs 3
+  [  "$result" -eq "0" ] && result="$?"
+  info "[push_data_to_collector] sent log to be processed by the collector: $result"
+
+
   cd "$_pwd"
 
-  local msg="[run_collector|out] => ${result}"
+  local msg="[push_data_to_collector|out] => ${result}"
   [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
   info "$msg"
 }
@@ -293,91 +345,10 @@ run_collector(){
 
 
 
-setup_debian(){
-  info "[setup_debian|in]"
-
-  if [ "$(id -u)" -ne 0 ]; then
-    err "[setup_debian] must be run as root"
-    exit 1
-  fi
-
-  apt-get update -y
-
-  # --- docker
-  info "[setup_debian] installing docker"
-  apt-get install -y ca-certificates curl gnupg lsb-release
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  chmod a+r /etc/apt/keyrings/docker.gpg
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-    $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-  apt-get update -y
-  apt-get install -y docker-ce docker-ce-cli containerd.io
-  systemctl enable --now docker
-
-  # --- docker-compose
-  info "[setup_debian] installing docker-compose"
-  local compose_version
-  compose_version="$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | grep '"tag_name"' | sed 's/.*: *"//;s/".*//')"
-  curl -fsSL "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-$(uname -m)" \
-    -o /usr/local/bin/docker-compose
-  chmod +x /usr/local/bin/docker-compose
-
-  # --- python 3.12
-  info "[setup_debian] installing python 3.12"
-  apt-get install -y software-properties-common
-  apt-get update -y
-  apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
-  update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 100
-  update-alternatives --set python3 /usr/bin/python3.12
-  update-alternatives --install /usr/bin/python python /usr/bin/python3.12 100
-  update-alternatives --set python /usr/bin/python3.12
-
-  local result="$?"
-  local msg="[setup_debian|out] => ${result}"
-  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
-  info "$msg"
-}
 
 
-proxmox_get_first_node_id(){
-  [ -z "$1" ] && err "HOST variable is not set" && exit 1
-  [ -z "$2" ] && err "AUTH_HEADER variable is not set" && exit 1
-  local HOST="$1"
-  local AUTH_HEADER="$2"
 
-  local response=$(curl -k https://$HOST:8006/api2/json/nodes -H "$AUTH_HEADER")
-  id=$(echo "$response" | jq -r '.data[0].id')
-  echo "$id"
-}
 
-setup_remote_docker(){
-  info "[setup_remote_docker|in]"
-
-  docker context create myhost --docker "host=ssh://user@docker-host"
-docker --context myhost ps
-docker --context myhost run -d --name test nginx
-
-  local node_id=$(proxmox_get_first_node_id "$MYPROC_HOST" "$MYPROC_API_AUTH_HEADER")
-  info "[setup_remote_docker] first Proxmox node ID: $node_id"
-  local result="$?"
-  local msg="[setup_remote_docker|out] => ${result}"
-  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
-  info "$msg"
-}
-
-deploy(){
-  info "[deploy|in]"
-  
-  # --- placeholder for deployment steps
-  local node_id=$(proxmox_get_first_node_id "$MYPROC_HOST" "$MYPROC_API_AUTH_HEADER")
-  info "[deploy] first Proxmox node ID: $node_id"
-  local result="$?"
-  local msg="[deploy|out] => ${result}"
-  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
-  info "$msg"
-}
 
 
 # <=== MAIN SECTION END  <===
@@ -401,10 +372,9 @@ usage() {
       - publish                               publishes the package
       - tag                                   creates a git tag with the version and pushes it
       - test_collector                        runs the OpenTelemetry Collector in a container for testing purposes
-      - build_docker_image                     builds the OpenTelemetry Collector Docker image
-      - run_collector                         runs the OpenTelemetry Collector Docker image
-      - setup_debian                          installs docker, docker-compose and python 3.12 on Debian OS
-      - deploy                                deploys the application
+      - build_push_collector                  builds and pushes the OpenTelemetry Collector Docker image
+      - test_observability_suite              runs the OpenTelemetry Collector, Grafana Loki and VictoriaMetrics in containers for testing purposes 
+      - push_data_to_collector                pushes test data to a remote OpenTelemetry Collector specified in the REMOTE_COLLECTOR variable
 EOM
   exit 1
 }
@@ -444,17 +414,14 @@ case "$1" in
   test_collector)
     test_collector
     ;;
-  build_docker_image)
-    build_docker_image
+  build_push_collector)
+    build_push_collector
     ;;
-  run_collector)
-    run_collector
+  test_observability_suite)
+    test_observability_suite
     ;;
-  setup_debian)
-    setup_debian
-    ;;
-  deploy)
-    deploy
+  push_data_to_collector)
+    push_data_to_collector
     ;;
   *)
     usage

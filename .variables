@@ -7,11 +7,17 @@ export PYPI_USER="__token__"
 
 export TMP_DIR=".tmp"
 export OUTPUT_DIR="output"
-export DOCKER_DIR=docker
-export OTEL_COLLECTOR_IMG_NAME="otel/opentelemetry-collector"
+
+# collector section
+export COLLECTOR_DOCKER_DIR=docker/collector
 export OTEL_COLLECTOR_IMG_VERSION="0.153.0"
-export OTEL_COLLECTOR_IMG="${OTEL_COLLECTOR_IMG_NAME}:${OTEL_COLLECTOR_IMG_VERSION}"
-# override it for you local system in .local_variables
+export CUSTOM_COLLECTOR_IMAGE=tgedr/otel-collector
 export GOBIN="/opt/homebrew/bin/go"
-export CUSTOM_COLLECTOR_IMAGE=tgedr/otel-collector-fs
-export CONTAINER_NAME="otel-collector"
+export TELEMETRYGEN_BIN=$GOBIN/telemetrygen
+export OBSERVABILITY_DIR=docker/observability
+export REMOTE_COLLECTOR="otelcollector.tgedr.org"
+export OTEL_COLLECTOR_IMG_NAME="otel/opentelemetry-collector"
+export OTEL_COLLECTOR_IMG="${OTEL_COLLECTOR_IMG_NAME}:${OTEL_COLLECTOR_IMG_VERSION}"
+
+# override it for you local system in .local_variables
+

@@ -1,0 +1,73 @@
+services:
+  victoriametrics:
+    container_name: victoriametrics
+    image: 'victoriametrics/victoria-metrics:v1.102.0'
+    restart: unless-stopped
+    ports:
+      - '8428:8428'
+    volumes:
+      -
+        type: bind
+        source: /mnt/victoriametrics
+        target: /storage
+    command:
+      - '--retentionPeriod=90d'
+    networks:
+      - coolify
+  loki:
+    container_name: loki
+    image: 'grafana/loki:main-1983d05'
+    restart: unless-stopped
+    ports:
+      - '3100:3100'
+    command: '-config.file=/etc/loki/local-config.yaml -config.expand-env=true'
+    volumes:
+      -
+        type: bind
+        source: /mnt/loki
+        target: /tmp/loki
+    environment:
+      - LOKI_LIMITS_CONFIG_VOLUME_ENABLED=true
+      - LOKI_PATTERN_INGESTER_ENABLED=true
+    networks:
+      - coolify
+  jaeger:
+    container_name: jaeger
+    image: 'jaegertracing/all-in-one:latest'
+    restart: unless-stopped
+    ports:
+      - '16686:16686'
+    networks:
+      - coolify
+  otelcollector:
+    container_name: otelcollector
+    image: 'tgedr/otel-collector:latest'
+    restart: unless-stopped
+    ports:
+      - '4318:4318'
+    depends_on:
+      - victoriametrics
+      - loki
+      - jaeger
+    networks:
+      - coolify
+  grafana:
+    container_name: grafana
+    image: 'grafana/grafana:latest'
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      -
+        type: bind
+        source: /mnt/grafana
+        target: /var/lib/grafana
+    depends_on:
+      - otelcollector
+    networks:
+      - coolify
+networks:
+  coolify:
+    external: true
