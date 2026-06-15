@@ -29,6 +29,7 @@ services:
     environment:
       - LOKI_LIMITS_CONFIG_VOLUME_ENABLED=true
       - LOKI_PATTERN_INGESTER_ENABLED=true
+      - LOKI_LIMITS_RETENTION_PERIOD=720h
     networks:
       - coolify
   jaeger:
