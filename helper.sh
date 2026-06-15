@@ -246,23 +246,23 @@ test_collector(){
   cd "$this_folder"
 
   docker pull "$CUSTOM_COLLECTOR_IMAGE"
-  docker run -p 4318:4318 --name test-collector "$CUSTOM_COLLECTOR_IMAGE" &
+  docker run -p 4318:4318 -e COLLECTOR_TOKEN="$COLLECTOR_TOKEN" --name test-collector "$CUSTOM_COLLECTOR_IMAGE" &
   sleep 6
 
   info "[test_collector] generating test trace with telemetrygen"
-  $TELEMETRYGEN_BIN traces --otlp-insecure --otlp-http --traces 1
+  $TELEMETRYGEN_BIN traces --otlp-insecure --otlp-http --otlp-header "Authorization=Bearer $COLLECTOR_TOKEN" --traces 1
   local result="$?"
   info "[test_collector] sent trace to be processed by the collector: $result"
   sleep 3
 
   info "[test_collector] generating test metric with telemetrygen"
-  $TELEMETRYGEN_BIN metrics --otlp-insecure --otlp-http --metrics 1
+  $TELEMETRYGEN_BIN metrics --otlp-insecure --otlp-http --otlp-header "Authorization=Bearer $COLLECTOR_TOKEN" --metrics 1
   [  "$result" -eq "0" ] && result="$?"
   info "[test_collector] sent metric to be processed by the collector: $result"
   sleep 3
 
   info "[test_collector] generating test log with telemetrygen"
-  $TELEMETRYGEN_BIN logs --otlp-insecure --otlp-http --logs 1
+  $TELEMETRYGEN_BIN logs --otlp-insecure --otlp-http --otlp-header "Authorization=Bearer $COLLECTOR_TOKEN" --logs 1
   [  "$result" -eq "0" ] && result="$?"
   info "[test_collector] sent log to be processed by the collector: $result"
   sleep 3
@@ -288,17 +288,17 @@ test_observability_suite(){
   [ "$result" -ne "0" ] && err "[test_observability_suite] failed to start the observability suite" && cd "$_pwd" && exit 1
 
    info "[test_observability_suite] generating test trace with telemetrygen"
-  $TELEMETRYGEN_BIN traces --otlp-insecure --otlp-http --traces 1
+  $TELEMETRYGEN_BIN traces --otlp-insecure --otlp-http --otlp-header "Authorization=Bearer $COLLECTOR_TOKEN" --traces 1
   local result="$?"
   info "[test_observability_suite] sent trace to be processed by the collector: $result"
 
   info "[test_observability_suite] generating test metric with telemetrygen"
-  $TELEMETRYGEN_BIN metrics --otlp-insecure --otlp-http --metrics 1
+  $TELEMETRYGEN_BIN metrics --otlp-insecure --otlp-http --otlp-header "Authorization=Bearer $COLLECTOR_TOKEN" --metrics 1
   [  "$result" -eq "0" ] && result="$?"
   info "[test_observability_suite] sent metric to be processed by the collector: $result"
 
   info "[test_observability_suite] generating test log with telemetrygen"
-  $TELEMETRYGEN_BIN logs --otlp-insecure --otlp-http --logs 1
+  $TELEMETRYGEN_BIN logs --otlp-insecure --otlp-http --otlp-header "Authorization=Bearer $COLLECTOR_TOKEN" --logs 1
   [  "$result" -eq "0" ] && result="$?"
   info "[test_observability_suite] sent log to be processed by the collector: $result"
 
@@ -320,17 +320,17 @@ push_data_to_collector(){
 
 
   info "[push_data_to_collector] generating test trace with telemetrygen"
-  $TELEMETRYGEN_BIN traces --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --traces 3
+  $TELEMETRYGEN_BIN traces --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --otlp-header "Authorization=\"Bearer $COLLECTOR_TOKEN\"" --traces 3
   local result="$?"
   info "[push_data_to_collector] sent trace to be processed by the collector: $result"
 
   info "[push_data_to_collector] generating test metric with telemetrygen"
-  $TELEMETRYGEN_BIN metrics --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --metrics 3
+  $TELEMETRYGEN_BIN metrics --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --otlp-header "Authorization=\"Bearer $COLLECTOR_TOKEN\"" --metrics 3
   [  "$result" -eq "0" ] && result="$?"
   info "[push_data_to_collector] sent metric to be processed by the collector: $result"
 
   info "[push_data_to_collector] generating test log with telemetrygen"
-  $TELEMETRYGEN_BIN logs --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --logs 3
+  $TELEMETRYGEN_BIN logs --otlp-http --otlp-endpoint "$REMOTE_COLLECTOR" --otlp-header "Authorization=\"Bearer $COLLECTOR_TOKEN\"" --logs 3
   [  "$result" -eq "0" ] && result="$?"
   info "[push_data_to_collector] sent log to be processed by the collector: $result"
 

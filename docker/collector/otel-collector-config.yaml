@@ -1,3 +1,7 @@
+extensions:
+  bearertokenauth:
+    token: "${env:COLLECTOR_TOKEN}"
+
 receivers:
   otlp:
     protocols:
@@ -5,6 +9,8 @@ receivers:
       #   endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth
 
 processors:
   batch:
@@ -30,6 +36,7 @@ exporters:
       insecure: true
 
 service:
+  extensions: [bearertokenauth]
   pipelines:
     metrics:
       receivers: [otlp]

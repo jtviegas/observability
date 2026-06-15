@@ -45,6 +45,8 @@ services:
     restart: unless-stopped
     ports:
       - '4318:4318'
+    environment:
+      - COLLECTOR_TOKEN=${COLLECTOR_TOKEN}
     depends_on:
       - victoriametrics
       - loki
