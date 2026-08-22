@@ -8,13 +8,28 @@ import time
 import pytest
 from opentelemetry._logs import get_logger_provider
 
-from tgedr_observability.commons import LOCAL_METRICS_URL
+from tgedr_observability.commons import (
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT,
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS,
+    ENV_VAR_TGEDR_OBSERVABILITY_SERVICE,
+)
 from tgedr_observability.logs import Logs
-from tgedr_observability.metrics import Metrics, OtlpConfig
+
+
+SERVICE_NAME = "test_service"
+LOCAL_LOGS_URL = "http://localhost:4318/v1/logs"
 
 
 @pytest.fixture(scope="module", autouse=True)
 def module_lifecycle():
+    original_service = os.environ.get(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE)
+    original_endpoint = os.environ.get(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT)
+    original_headers = os.environ.get(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS)
+
+    os.environ[ENV_VAR_TGEDR_OBSERVABILITY_SERVICE] = SERVICE_NAME
+    os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT] = LOCAL_LOGS_URL
+    os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS, None)
+
     # Start script in its own process group so teardown can kill children too
     proc = subprocess.Popen(
         ["bash", "helper.sh", "run_local_collector"],
@@ -43,9 +58,24 @@ def module_lifecycle():
         # Process already exited
         pass
 
+    if original_service is None:
+        os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, None)
+    else:
+        os.environ[ENV_VAR_TGEDR_OBSERVABILITY_SERVICE] = original_service
+
+    if original_endpoint is None:
+        os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, None)
+    else:
+        os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT] = original_endpoint
+
+    if original_headers is None:
+        os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS, None)
+    else:
+        os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS] = original_headers
+
 def test_logger(module_lifecycle, capfd) -> None:
 
-    Logs.instance().init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    Logs.instance()
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     logger.info("This is an OpenTelemetry log record!")
@@ -65,7 +95,7 @@ def test_logs_lifecycle_methods(module_lifecycle) -> None:
     assert o.force_flush() is False
     o.shutdown()
 
-    o.init(service="test_service")
+    Logs.instance()
     assert o.force_flush(10_000) is True
 
     assert o._handler is not None
@@ -84,7 +114,14 @@ def test_logs_app_shutdown(module_lifecycle) -> None:
     o.shutdown()
     Logs.app_shutdown()
 
-    o.init(service="test_service")
+    Logs.instance()
     logging.getLogger(__name__).info("logs app shutdown path")
     Logs.app_shutdown()
     assert o._logger_provider is None
+
+
+def test_logs_app_shutdown_early_return(monkeypatch) -> None:
+    monkeypatch.setattr(Logs, "instance", staticmethod(lambda: None))
+
+    # Should return cleanly when provider is not initialized.
+    Logs.app_shutdown()

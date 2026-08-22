@@ -7,8 +7,20 @@ import time
 import pytest
 from opentelemetry import metrics as otel_metrics
 
-from tgedr_observability.commons import LOCAL_METRICS_URL, ObservabilityError
+from tgedr_observability.commons import (
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT,
+    ENV_VAR_TGEDR_OBSERVABILITY_SERVICE,
+    LOCAL_METRICS_URL,
+    ObservabilityError,
+)
 from tgedr_observability.metrics import Metrics, OtlpConfig
+
+
+SERVICE_NAME = "test_service"
+
+
+def _otlp_config() -> OtlpConfig:
+    return OtlpConfig(service=SERVICE_NAME, endpoint=LOCAL_METRICS_URL)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -43,8 +55,7 @@ def module_lifecycle():
 
 def test_counter(module_lifecycle, capfd) -> None:
 
-    o: Metrics = Metrics.instance()
-    o.init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_counter("test.example.counter", 1, attributes={"key": "value"})
 
     # Force synchronous export so ConsoleMetricExporter output is available now.
@@ -56,8 +67,7 @@ def test_counter(module_lifecycle, capfd) -> None:
 
 def test_gauge(module_lifecycle, capfd) -> None:
 
-    o: Metrics = Metrics.instance()
-    o.init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_gauge("test.example.gauge", 3.14, attributes={"key": "value"})
 
     otel_metrics.get_meter_provider().force_flush() # type: ignore
@@ -67,8 +77,7 @@ def test_gauge(module_lifecycle, capfd) -> None:
 
 def test_gauge_s(module_lifecycle, capfd) -> None:
 
-    o: Metrics = Metrics.instance()
-    o.init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_gauge("test.example.gauge_s", 173123123, attributes={"key": "value"})
 
     otel_metrics.get_meter_provider().force_flush() # type: ignore
@@ -78,8 +87,7 @@ def test_gauge_s(module_lifecycle, capfd) -> None:
 
 def test_histogram(module_lifecycle, capfd) -> None:
 
-    o: Metrics = Metrics.instance()
-    o.init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     for i in range(12):
         o.add_to_histogram("test.example.histogram", 42*i, attributes={"key": str(i)})
 
@@ -90,8 +98,7 @@ def test_histogram(module_lifecycle, capfd) -> None:
 
 def test_histogram_s(module_lifecycle, capfd) -> None:
 
-    o: Metrics = Metrics.instance()
-    o.init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     for i in range(12):
         o.add_to_histogram("test.example.histogram_s", 173123123+i, attributes={"key": str(i)})
 
@@ -102,21 +109,20 @@ def test_histogram_s(module_lifecycle, capfd) -> None:
 
 
 def test_invalid_metric_name_raises_value_error(module_lifecycle) -> None:
-    o: Metrics = Metrics.instance()
-    o.init(service="test_service", otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL))
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
 
     with pytest.raises(ObservabilityError, match="at least two parts"):
         o.add_to_counter("counter", 1)
 
 
 def test_metrics_lifecycle_methods(module_lifecycle) -> None:
-    o: Metrics = Metrics.instance()
+    o: Metrics = Metrics()
     o.shutdown()
 
     with pytest.raises(ObservabilityError, match="not initialized"):
         o.force_flush()
 
-    o.init(service="test_service")
+    o = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_counter("test.lifecycle.counter", 1)
     assert o.force_flush(10_000) is True
 
@@ -128,12 +134,29 @@ def test_metrics_lifecycle_methods(module_lifecycle) -> None:
     assert o._histograms == {}
 
 
-def test_metrics_app_shutdown(module_lifecycle) -> None:
-    o: Metrics = Metrics.instance()
+def test_metrics_app_shutdown(module_lifecycle, monkeypatch) -> None:
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, SERVICE_NAME)
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, LOCAL_METRICS_URL)
+
+    o: Metrics = Metrics()
     o.shutdown()
     Metrics.app_shutdown()
 
-    o.init(service="test_service")
+    o = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_gauge("test.lifecycle.gauge", 1.0)
     Metrics.app_shutdown()
     assert o._meter_provider is None
+
+
+def test_metrics_app_shutdown_early_return(monkeypatch) -> None:
+    monkeypatch.setattr(Metrics, "instance", staticmethod(lambda: None))
+
+    # Should return cleanly when provider is not initialized.
+    Metrics.app_shutdown()
+
+
+def test_metrics_instance_returns_none_without_config(monkeypatch) -> None:
+    monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, raising=False)
+    monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, raising=False)
+
+    assert Metrics.instance() is None

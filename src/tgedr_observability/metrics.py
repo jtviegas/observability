@@ -14,9 +14,16 @@ class Metrics(metaclass=SingletonMeta):
     """Singleton manager for meter creation and metric recording."""
 
     @staticmethod
-    def instance() -> "Metrics":
+    def instance(otlp_config: OtlpConfig | None = None) -> "Metrics | None":
         """Get the singleton instance of the Metrics manager."""
-        return Metrics()  # pyright: ignore[reportReturnType]
+        instance = Metrics()  # pyright: ignore[reportReturnType]
+        if instance._meter_provider is None:  # pyright: ignore[reportAttributeAccessIssue]
+            config = otlp_config or OtlpConfig.resolve_from_env()
+            if config is not None:
+                instance._Metrics__bootstrap(config)  # pyright: ignore[reportAttributeAccessIssue]
+            else:
+                return None
+        return instance  # pyright: ignore[reportReturnType]
 
     def __init__(self) -> None:
         """Initialize the singleton metrics manager state."""
@@ -26,26 +33,25 @@ class Metrics(metaclass=SingletonMeta):
         self._gauges: dict[str, Instrument] = {}
         self._histograms: dict[str, metrics.Histogram] = {}
 
-    def init(self, service: str, otlp_config: OtlpConfig | None = None) -> None:
+    def __bootstrap(self, otlp_config: OtlpConfig) -> None:
         """Initialize the metrics provider and configure metric exporting."""
-        if self._meter_provider is None:
-            resource = Resource.create(attributes={SERVICE_NAME: service})
-            readers = []
-            console_exporter = ConsoleMetricExporter()
-            reader_console = PeriodicExportingMetricReader(console_exporter)
-            readers.append(reader_console)
+        resource = Resource.create(attributes={SERVICE_NAME: otlp_config.service})  # pyright: ignore[reportOptionalMemberAccess]
+        readers = []
+        console_exporter = ConsoleMetricExporter()
+        reader_console = PeriodicExportingMetricReader(console_exporter)
+        readers.append(reader_console)
 
-            if otlp_config is not None:
-                http_exporter = OTLPMetricExporter(
-                    endpoint=otlp_config.endpoint,
-                    headers=otlp_config.headers,
-                )
-                reader_http = PeriodicExportingMetricReader(http_exporter, export_interval_millis=5000)
-                readers.append(reader_http)
+        if otlp_config.endpoint is not None:
+            http_exporter = OTLPMetricExporter(
+                endpoint=otlp_config.endpoint,
+                headers=otlp_config.headers,
+            )
+            reader_http = PeriodicExportingMetricReader(http_exporter, export_interval_millis=5000)
+            readers.append(reader_http)
 
-            provider = MeterProvider(metric_readers=readers, resource=resource)
-            metrics.set_meter_provider(provider)  # Set the global meter provider
-            self._meter_provider = provider
+        provider = MeterProvider(metric_readers=readers, resource=resource)
+        metrics.set_meter_provider(provider)  # Set the global meter provider
+        self._meter_provider = provider
 
     def _get_meter(self, name: str) -> metrics.Meter:
         toponomy: list[str] = name.split(".")
@@ -134,7 +140,7 @@ class Metrics(metaclass=SingletonMeta):
         ````
         """
         instance = Metrics.instance()
-        if instance._meter_provider is None:  # noqa: SLF001
+        if instance is None:
             return
         instance.force_flush()
         instance.shutdown()

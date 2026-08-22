@@ -17,23 +17,30 @@ class Logs(metaclass=SingletonMeta):
     """Singleton manager for configuring OpenTelemetry logging."""
 
     @staticmethod
-    def instance() -> "Logs":
+    def instance(otlp_config: OtlpConfig | None = None) -> "Logs | None":
         """Get the singleton instance of the Logs manager."""
-        return Logs()  # pyright: ignore[reportReturnType]
+        instance = Logs()  # pyright: ignore[reportReturnType]
+        if instance._logger_provider is None:  # pyright: ignore[reportAttributeAccessIssue]
+            config = otlp_config or OtlpConfig.resolve_from_env()
+            if config is not None:
+                instance._Logs__bootstrap(config)  # pyright: ignore[reportAttributeAccessIssue]
+            else:
+                return None
+        return instance  # pyright: ignore[reportReturnType]
 
     def __init__(self) -> None:
         """Initialize the singleton logs manager state."""
         self._logger_provider: LoggerProvider | None = None
         self._handler: LoggingHandler | None = None
 
-    def init(self, service: str, otlp_config: OtlpConfig | None = None) -> None:
+    def __bootstrap(self, otlp_config: OtlpConfig) -> None:
         """Initialize the logging provider and configure log exporting."""
         if self._logger_provider is None:
-            resource = Resource.create(attributes={SERVICE_NAME: service})
+            resource = Resource.create(attributes={SERVICE_NAME: otlp_config.service})  # pyright: ignore[reportOptionalMemberAccess]
             provider = LoggerProvider(resource=resource)
             provider.add_log_record_processor(BatchLogRecordProcessor(ConsoleLogRecordExporter()))
 
-            if otlp_config is not None:
+            if otlp_config.endpoint is not None:
                 otlp_exporter = OTLPLogExporter(
                     endpoint=otlp_config.endpoint,
                     headers=otlp_config.headers,
@@ -80,7 +87,10 @@ class Logs(metaclass=SingletonMeta):
             ````
         """
         instance = Logs.instance()
-        if instance._logger_provider is None:  # noqa: SLF001
+        if instance is None:
             return
         instance.force_flush()
         instance.shutdown()
+
+
+Logs.instance()
