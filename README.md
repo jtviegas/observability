@@ -32,21 +32,33 @@ The Python package lives under `src/tgedr_observability` and currently exposes t
 `commons.py` contains:
 
 - `LOCAL_METRICS_URL`: default local OTLP HTTP endpoint for metrics (`http://localhost:4318/v1/metrics`).
-- `OtlpConfig`: dataclass with exporter endpoint and optional headers.
+- OTLP environment variable names:
+  - `TGEDR_OBSERVABILITY_SERVICE`
+  - `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
+  - `TGEDR_OBSERVABILITY_EXPORTER_HEADERS`
+- `OtlpConfig`: dataclass with `service`, optional `endpoint`, and optional `headers`.
+- `OtlpConfig.resolve_from_env()`: helper that builds an `OtlpConfig` from env vars.
+  - Returns a config only when both service and endpoint are present.
+  - Parses headers from JSON when provided.
+  - Returns `None` when required env vars are missing.
 - `ObservabilityError`: package-specific exception used for observability validation errors.
 
 ### metrics.py
 
 `Metrics` is a singleton manager that lazily initializes a global OpenTelemetry `MeterProvider`.
 
-Initialization behavior:
+Bootstrap behavior:
 
-1. `Metrics.instance()` returns the singleton object.
-2. `init(service, otlp_config=None)` configures:
-   - `Resource` with `service.name`.
-   - `ConsoleMetricExporter` (always enabled).
-   - Optional `OTLPMetricExporter` over HTTP when `otlp_config` is passed.
-3. The configured provider is set globally with `metrics.set_meter_provider(provider)`.
+1. `Metrics.instance(otlp_config=None)` returns the singleton object when bootstrap succeeds.
+2. If the provider is not initialized yet, `instance()` resolves configuration in this order:
+  - explicit `otlp_config` argument, then
+  - `OtlpConfig.resolve_from_env()`.
+3. When a config is available, private method `__bootstrap(otlp_config)` runs and configures:
+  - `Resource` with `service.name` from `otlp_config.service`.
+  - `ConsoleMetricExporter` through a `PeriodicExportingMetricReader` (always enabled).
+  - Optional OTLP HTTP exporter (`OTLPMetricExporter`) when `otlp_config.endpoint` is set.
+4. The configured provider is installed globally with `metrics.set_meter_provider(provider)`.
+5. If no config can be resolved, `instance()` returns `None`.
 
 Metric naming convention:
 
@@ -68,27 +80,37 @@ Public methods:
 - `add_to_histogram(name, value, attributes=None)`
 - `force_flush(timeout_millis=10000)`
 - `shutdown()`
-- `app_shutdown()` (flush + shutdown convenience hook)
+- `app_shutdown()` (flush + shutdown convenience hook; no-op if `instance()` resolves to `None`)
 
 ### logs.py
 
 `Logs` is a singleton manager that lazily initializes a global OpenTelemetry `LoggerProvider`.
 
-Initialization behavior:
+Bootstrap behavior:
 
-1. `Logs.instance()` returns the singleton object.
-2. `init(service, otlp_config=None)` configures:
-   - `Resource` with `service.name`.
-   - `BatchLogRecordProcessor(ConsoleLogRecordExporter())` (always enabled).
-   - Optional `BatchLogRecordProcessor(OTLPLogExporter(...))` when `otlp_config` is passed.
-3. The provider is set globally with `set_logger_provider(provider)`.
-4. A `LoggingHandler` is attached through `logging.basicConfig(..., force=True)`.
+1. `Logs.instance(otlp_config=None)` returns the singleton object when bootstrap succeeds.
+2. If the provider is not initialized yet, `instance()` resolves configuration in this order:
+  - explicit `otlp_config` argument, then
+  - `OtlpConfig.resolve_from_env()`.
+3. When a config is available, private method `__bootstrap(otlp_config)` runs and configures:
+  - `Resource` with `service.name` from `otlp_config.service`.
+  - `BatchLogRecordProcessor(ConsoleLogRecordExporter())` (always enabled).
+  - Optional `BatchLogRecordProcessor(OTLPLogExporter(...))` when `otlp_config.endpoint` is set.
+4. The provider is installed globally with `set_logger_provider(provider)`.
+5. `LoggingHandler` is attached through `logging.basicConfig(..., force=True)`.
+6. If no config can be resolved, `instance()` returns `None`.
+
+Import-time note:
+
+- `logs.py` calls `Logs.instance()` at module import time.
+- This eagerly attempts bootstrap once during import.
+- If required env vars are not set, the call safely returns `None` and no provider is installed.
 
 Public methods:
 
 - `force_flush(timeout_millis=10000)`
 - `shutdown()` (also detaches and closes the installed handler)
-- `app_shutdown()` (flush + shutdown convenience hook)
+- `app_shutdown()` (flush + shutdown convenience hook; no-op if `instance()` resolves to `None`)
 
 ## usage examples
 
@@ -98,11 +120,11 @@ Public methods:
 from tgedr_observability.commons import LOCAL_METRICS_URL, OtlpConfig
 from tgedr_observability.metrics import Metrics
 
-metrics_manager = Metrics.instance()
-metrics_manager.init(
-  service="orders-service",
-  otlp_config=OtlpConfig(endpoint=LOCAL_METRICS_URL),
+metrics_manager = Metrics.instance(
+  otlp_config=OtlpConfig(service="orders-service", endpoint=LOCAL_METRICS_URL),
 )
+if metrics_manager is None:
+  raise RuntimeError("Metrics bootstrap failed: missing config")
 
 metrics_manager.add_to_counter("orders.api.requests", 1, {"route": "/orders"})
 metrics_manager.add_to_histogram("orders.api.latency_s", 0.123, {"route": "/orders"})
@@ -116,11 +138,11 @@ import logging
 from tgedr_observability.commons import OtlpConfig
 from tgedr_observability.logs import Logs
 
-logs_manager = Logs.instance()
-logs_manager.init(
-  service="orders-service",
-  otlp_config=OtlpConfig(endpoint="http://localhost:4318/v1/logs"),
+logs_manager = Logs.instance(
+  otlp_config=OtlpConfig(service="orders-service", endpoint="http://localhost:4318/v1/logs"),
 )
+if logs_manager is None:
+  raise RuntimeError("Logs bootstrap failed: missing config")
 
 logger = logging.getLogger(__name__)
 logger.info("orders api started")
