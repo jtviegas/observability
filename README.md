@@ -114,6 +114,31 @@ Public methods:
 
 ## usage examples
 
+You can bootstrap in two ways:
+
+- Pass an explicit `OtlpConfig` to `Metrics.instance(...)` / `Logs.instance(...)`.
+- Set environment variables and let `instance()` load config automatically.
+
+Environment-only bootstrap requires:
+
+- `TGEDR_OBSERVABILITY_SERVICE`
+- `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
+- Optional `TGEDR_OBSERVABILITY_EXPORTER_HEADERS` as a JSON object string.
+
+Example:
+
+```bash
+export TGEDR_OBSERVABILITY_SERVICE="orders-service"
+export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/metrics"
+export TGEDR_OBSERVABILITY_EXPORTER_HEADERS='{"Authorization":"Bearer your-token"}'
+```
+
+For logs, use the logs endpoint in `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`:
+
+```bash
+export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/logs"
+```
+
 ### metrics
 
 ```python
@@ -131,6 +156,19 @@ metrics_manager.add_to_histogram("orders.api.latency_s", 0.123, {"route": "/orde
 metrics_manager.force_flush()
 ```
 
+Metrics with environment-only bootstrap:
+
+```python
+from tgedr_observability.metrics import Metrics
+
+metrics_manager = Metrics.instance()
+if metrics_manager is None:
+  raise RuntimeError("Metrics bootstrap failed: set TGEDR_OBSERVABILITY_* env vars")
+
+metrics_manager.add_to_counter("orders.api.requests", 1, {"route": "/orders"})
+metrics_manager.force_flush()
+```
+
 ### logs
 
 ```python
@@ -143,6 +181,21 @@ logs_manager = Logs.instance(
 )
 if logs_manager is None:
   raise RuntimeError("Logs bootstrap failed: missing config")
+
+logger = logging.getLogger(__name__)
+logger.info("orders api started")
+logs_manager.force_flush()
+```
+
+Logs with environment-only bootstrap:
+
+```python
+import logging
+from tgedr_observability.logs import Logs
+
+logs_manager = Logs.instance()
+if logs_manager is None:
+  raise RuntimeError("Logs bootstrap failed: set TGEDR_OBSERVABILITY_* env vars")
 
 logger = logging.getLogger(__name__)
 logger.info("orders api started")
