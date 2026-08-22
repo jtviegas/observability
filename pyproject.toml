@@ -1,7 +1,7 @@
 [project]
 name = "tgedr-observability"
 version = "0.0.1"
-description = "this is a template for a python package"
+description = "simple observability solution"
 authors = [
     {name = "developer",email = "developer@email.com"}
 ]
@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 
 dependencies = [
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
     "pandas>=2.3.0,<3.0.0",
     "tgedr-pycommons>=1.2.1",
 ]
@@ -49,6 +52,7 @@ source = ["src/"]
 include = ["src/*"]
 omit = [
     "*/tests/*",
+    "*/test/*",
     "*/test_*",
     "*/__pycache__/*",
     "*/migrations/*",
@@ -103,7 +107,9 @@ exclude = [
     "site-packages",
     "venv",
     "tests/",
-    "typings/"
+    "test/",
+    "typings/",
+    "server/"
 ]
 
 line-length = 120
@@ -113,7 +119,7 @@ indent-width = 4
 select = ["ALL"]
 ignore = ["D203", "S101", "D104", "INP001", "D213", "COM812", "I001", 
     "D401", "D407", "RET504", "PLR2004", "FA102", "E501", "EXE002", "PLR0913", 
-    "PLR0912", "C901", "PLR0911", "G004", "D413"]
+    "PLR0912", "C901", "PLR0911", "G004", "D413", "CPY001"]
 fixable = ["ALL"]
 unfixable = []
 # Allow unused variables when underscore-prefixed.

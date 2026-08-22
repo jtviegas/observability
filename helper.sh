@@ -342,6 +342,28 @@ push_data_to_collector(){
   info "$msg"
 }
 
+run_local_collector(){
+  info "[run_local_collector|in]"
+
+  _pwd=`pwd`
+  cd "$this_folder"
+
+  docker rm -f local-otel-collector >/dev/null 2>&1 || true
+  docker run -d --name local-otel-collector \
+    -p 4317:4317 \
+    -p 4318:4318 \
+    -v "$this_folder/docker/local_collector/otel-collector-config.yaml":/etc/otel-collector-config.yaml \
+    otel/opentelemetry-collector:latest \
+    --config=/etc/otel-collector-config.yaml >/dev/null
+  local result="$?"
+
+  cd "$_pwd"
+
+  local msg="[run_local_collector|out] => ${result}"
+  [[ ! "$result" -eq "0" ]] && info "$msg" && exit 1
+  info "$msg"
+}
+
 
 
 
@@ -375,6 +397,7 @@ usage() {
       - build_push_collector                  builds and pushes the OpenTelemetry Collector Docker image
       - test_observability_suite              runs the OpenTelemetry Collector, Grafana Loki and VictoriaMetrics in containers for testing purposes 
       - push_data_to_collector                pushes test data to a remote OpenTelemetry Collector specified in the REMOTE_COLLECTOR variable
+      - run_local_collector                   runs the OpenTelemetry Collector in a container for local testing purposes
 EOM
   exit 1
 }
@@ -422,6 +445,9 @@ case "$1" in
     ;;
   push_data_to_collector)
     push_data_to_collector
+    ;;
+  run_local_collector)
+    run_local_collector
     ;;
   *)
     usage
