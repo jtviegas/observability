@@ -1,5 +1,7 @@
 """Metrics manager and helpers for OpenTelemetry instrumentation."""
 
+from pathlib import Path
+
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -32,6 +34,7 @@ class Metrics(metaclass=SingletonMeta):
         self._counters: dict[str, metrics.UpDownCounter] = {}
         self._gauges: dict[str, Instrument] = {}
         self._histograms: dict[str, metrics.Histogram] = {}
+        self._log_file = None
 
     def __bootstrap(self, otlp_config: OtlpConfig) -> None:
         """Initialize the metrics provider and configure metric exporting."""
@@ -41,10 +44,18 @@ class Metrics(metaclass=SingletonMeta):
         reader_console = PeriodicExportingMetricReader(console_exporter)
         readers.append(reader_console)
 
-        if otlp_config.endpoint is not None:
+        if otlp_config.file_exporter_url is not None:
+            Path(otlp_config.file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
+            Path(otlp_config.file_exporter_url).touch()
+            self._log_file = open(otlp_config.file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
+            file_exporter = ConsoleMetricExporter(out=self._log_file)
+            reader_file = PeriodicExportingMetricReader(file_exporter)
+            readers.append(reader_file)
+
+        if otlp_config.http_exporter_endpoint is not None:
             http_exporter = OTLPMetricExporter(
-                endpoint=otlp_config.endpoint,
-                headers=otlp_config.headers,
+                endpoint=otlp_config.http_exporter_endpoint,
+                headers=otlp_config.http_exporter_headers,
             )
             reader_http = PeriodicExportingMetricReader(http_exporter, export_interval_millis=5000)
             readers.append(reader_http)
@@ -128,6 +139,10 @@ class Metrics(metaclass=SingletonMeta):
         self._counters.clear()
         self._gauges.clear()
         self._histograms.clear()
+
+        if self._log_file is not None and not self._log_file.closed:
+            self._log_file.close()
+            self._log_file = None
 
     @staticmethod
     def app_shutdown() -> None:

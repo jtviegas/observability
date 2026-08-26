@@ -1,6 +1,7 @@
 """OpenTelemetry logging setup and singleton manager for application logs."""
 
 import logging
+from pathlib import Path
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import (
@@ -15,6 +16,8 @@ from tgedr_observability.commons import OtlpConfig
 
 class Logs(metaclass=SingletonMeta):
     """Singleton manager for configuring OpenTelemetry logging."""
+
+    ENV_VAR_TGEDR_OBSERVABILITY_SERVICE: str = "TGEDR_OBSERVABILITY_SERVICE"
 
     @staticmethod
     def instance(otlp_config: OtlpConfig | None = None) -> "Logs | None":
@@ -32,6 +35,7 @@ class Logs(metaclass=SingletonMeta):
         """Initialize the singleton logs manager state."""
         self._logger_provider: LoggerProvider | None = None
         self._handler: LoggingHandler | None = None
+        self._log_file = None
 
     def __bootstrap(self, otlp_config: OtlpConfig) -> None:
         """Initialize the logging provider and configure log exporting."""
@@ -40,10 +44,17 @@ class Logs(metaclass=SingletonMeta):
             provider = LoggerProvider(resource=resource)
             provider.add_log_record_processor(BatchLogRecordProcessor(ConsoleLogRecordExporter()))
 
-            if otlp_config.endpoint is not None:
+            if otlp_config.file_exporter_url is not None:
+                Path(otlp_config.file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
+                Path(otlp_config.file_exporter_url).touch()
+                self._log_file = open(otlp_config.file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
+                file_exporter = ConsoleLogRecordExporter(out=self._log_file)
+                provider.add_log_record_processor(BatchLogRecordProcessor(file_exporter))
+
+            if otlp_config.http_exporter_endpoint is not None:
                 otlp_exporter = OTLPLogExporter(
-                    endpoint=otlp_config.endpoint,
-                    headers=otlp_config.headers,
+                    endpoint=otlp_config.http_exporter_endpoint,
+                    headers=otlp_config.http_exporter_headers,
                 )
                 provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
 
@@ -67,6 +78,10 @@ class Logs(metaclass=SingletonMeta):
 
         self._logger_provider.shutdown()
         self._logger_provider = None
+
+        if self._log_file is not None and not self._log_file.closed:
+            self._log_file.close()
+            self._log_file = None
 
         if self._handler is not None:
             root_logger = logging.getLogger()

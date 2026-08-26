@@ -36,5 +36,5 @@ def test_resolve_from_env_with_endpoint_and_headers(monkeypatch) -> None:
 
     assert config is not None
     assert config.service == "test-service"
-    assert config.endpoint == endpoint
-    assert config.headers == {"Authorization": "Bearer token", "x-scope": "test"}
+    assert config.http_exporter_endpoint == endpoint
+    assert config.http_exporter_headers == {"Authorization": "Bearer token", "x-scope": "test"}

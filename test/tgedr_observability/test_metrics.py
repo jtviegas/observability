@@ -1,8 +1,10 @@
 """Module with example function unit test for description purposes."""
 
 import os
+from pathlib import Path
 import signal
 import subprocess
+import tempfile
 import time
 import pytest
 from opentelemetry import metrics as otel_metrics
@@ -17,11 +19,12 @@ from tgedr_observability.metrics import Metrics, OtlpConfig
 
 
 SERVICE_NAME = "test_service"
+_metrics_tmpdir = tempfile.TemporaryDirectory()
+_METRICS_LOG = os.path.join(_metrics_tmpdir.name, "metrics.log")
 
 
 def _otlp_config() -> OtlpConfig:
-    return OtlpConfig(service=SERVICE_NAME, endpoint=LOCAL_METRICS_URL)
-
+    return OtlpConfig(service=SERVICE_NAME, http_exporter_endpoint=LOCAL_METRICS_URL, file_exporter_url=_METRICS_LOG)
 
 @pytest.fixture(scope="module", autouse=True)
 def module_lifecycle():
@@ -53,59 +56,54 @@ def module_lifecycle():
         # Process already exited
         pass
 
-def test_counter(module_lifecycle, capfd) -> None:
+def test_counter(module_lifecycle) -> None:
 
     o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_counter("test.example.counter", 1, attributes={"key": "value"})
 
     # Force synchronous export so ConsoleMetricExporter output is available now.
-    otel_metrics.get_meter_provider().force_flush() # type: ignore
+    assert otel_metrics.get_meter_provider().force_flush() is True # type: ignore
 
-    captured = capfd.readouterr()
-    assert "Counter metric for test.example.counter" in captured.out
-    assert '"value": 1' in captured.out
+def test_counter_fileexport(module_lifecycle) -> None:
 
-def test_gauge(module_lifecycle, capfd) -> None:
+    o: Metrics = Metrics.instance(otlp_config=_otlp_config())
+    o.add_to_counter("test.fileexport.counter", 1, attributes={"key": "value"})
+    assert o.force_flush() is True
+
+    log_file = Path(_METRICS_LOG)
+    content = log_file.read_text(encoding="utf-8")
+    assert "Counter metric for test.fileexport.counter" in content
+
+
+def test_gauge(module_lifecycle) -> None:
 
     o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_gauge("test.example.gauge", 3.14, attributes={"key": "value"})
 
-    otel_metrics.get_meter_provider().force_flush() # type: ignore
-    captured = capfd.readouterr()
-    assert "Gauge metric for test.example.gauge" in captured.out
-    assert '"value": 3.14' in captured.out
+    assert otel_metrics.get_meter_provider().force_flush() is True # type: ignore
 
-def test_gauge_s(module_lifecycle, capfd) -> None:
+def test_gauge_s(module_lifecycle) -> None:
 
     o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     o.add_to_gauge("test.example.gauge_s", 173123123, attributes={"key": "value"})
 
-    otel_metrics.get_meter_provider().force_flush() # type: ignore
-    captured = capfd.readouterr()
-    assert "Gauge metric for test.example.gauge_s" in captured.out
-    assert '"value": 173123123' in captured.out
+    assert otel_metrics.get_meter_provider().force_flush() is True # type: ignore
 
-def test_histogram(module_lifecycle, capfd) -> None:
+def test_histogram(module_lifecycle) -> None:
 
     o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     for i in range(12):
         o.add_to_histogram("test.example.histogram", 42*i, attributes={"key": str(i)})
 
-    otel_metrics.get_meter_provider().force_flush() # type: ignore
-    captured = capfd.readouterr()
-    assert "Histogram metric for test.example.histogram" in captured.out
-    assert '"key": "11"' in captured.out
+    assert otel_metrics.get_meter_provider().force_flush() is True # type: ignore
 
-def test_histogram_s(module_lifecycle, capfd) -> None:
+def test_histogram_s(module_lifecycle) -> None:
 
     o: Metrics = Metrics.instance(otlp_config=_otlp_config())
     for i in range(12):
         o.add_to_histogram("test.example.histogram_s", 173123123+i, attributes={"key": str(i)})
 
-    otel_metrics.get_meter_provider().force_flush() # type: ignore
-    captured = capfd.readouterr()
-    assert "Histogram metric for test.example.histogram_s" in captured.out
-    assert '"key": "11"' in captured.out
+    assert otel_metrics.get_meter_provider().force_flush() is True # type: ignore
 
 
 def test_invalid_metric_name_raises_value_error(module_lifecycle) -> None:

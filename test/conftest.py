@@ -21,16 +21,16 @@ def resources_folder() -> str:
 
 
 @pytest.fixture(scope="session")
-def temporary_folder() -> str:
+def temporary_folder():
     """Provides a temporary folder for testing purposes.
 
-    Returns:
-        temporary folder
+    Yields:
+        temporary folder path
 
     """
-    # pylint: disable=consider-using-with
-    _folder = tempfile.TemporaryDirectory("+wb").name
-    _path = Path(_folder)
+    _tmpdir = tempfile.TemporaryDirectory()
+    _path = Path(_tmpdir.name)
     if not _path.exists():
         _path.mkdir(parents=True)
-    return _folder
+    yield _tmpdir.name
+    _tmpdir.cleanup()

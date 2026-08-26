@@ -36,10 +36,12 @@ The Python package lives under `src/tgedr_observability` and currently exposes t
   - `TGEDR_OBSERVABILITY_SERVICE`
   - `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
   - `TGEDR_OBSERVABILITY_EXPORTER_HEADERS`
-- `OtlpConfig`: dataclass with `service`, optional `endpoint`, and optional `headers`.
+  - `TGEDR_OBSERVABILITY_EXPORTER_FILE`
+- `OtlpConfig`: frozen dataclass with `service`, optional `http_exporter_endpoint`, optional `http_exporter_headers`, and optional `file_exporter_url`.
 - `OtlpConfig.resolve_from_env()`: helper that builds an `OtlpConfig` from env vars.
   - Returns a config only when both service and endpoint are present.
   - Parses headers from JSON when provided.
+  - Includes `file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_FILE` when set.
   - Returns `None` when required env vars are missing.
 - `ObservabilityError`: package-specific exception used for observability validation errors.
 
@@ -56,7 +58,8 @@ Bootstrap behavior:
 3. When a config is available, private method `__bootstrap(otlp_config)` runs and configures:
   - `Resource` with `service.name` from `otlp_config.service`.
   - `ConsoleMetricExporter` through a `PeriodicExportingMetricReader` (always enabled).
-  - Optional OTLP HTTP exporter (`OTLPMetricExporter`) when `otlp_config.endpoint` is set.
+  - Optional file exporter (`ConsoleMetricExporter` writing to a file) when `otlp_config.file_exporter_url` is set. The parent directory is created automatically.
+  - Optional OTLP HTTP exporter (`OTLPMetricExporter`) when `otlp_config.http_exporter_endpoint` is set.
 4. The configured provider is installed globally with `metrics.set_meter_provider(provider)`.
 5. If no config can be resolved, `instance()` returns `None`.
 
@@ -95,16 +98,11 @@ Bootstrap behavior:
 3. When a config is available, private method `__bootstrap(otlp_config)` runs and configures:
   - `Resource` with `service.name` from `otlp_config.service`.
   - `BatchLogRecordProcessor(ConsoleLogRecordExporter())` (always enabled).
-  - Optional `BatchLogRecordProcessor(OTLPLogExporter(...))` when `otlp_config.endpoint` is set.
+  - Optional file exporter (`ConsoleLogRecordExporter` writing to a file) when `otlp_config.file_exporter_url` is set. The parent directory is created automatically.
+  - Optional `BatchLogRecordProcessor(OTLPLogExporter(...))` when `otlp_config.http_exporter_endpoint` is set.
 4. The provider is installed globally with `set_logger_provider(provider)`.
 5. `LoggingHandler` is attached through `logging.basicConfig(..., force=True)`.
 6. If no config can be resolved, `instance()` returns `None`.
-
-Import-time note:
-
-- `logs.py` calls `Logs.instance()` at module import time.
-- This eagerly attempts bootstrap once during import.
-- If required env vars are not set, the call safely returns `None` and no provider is installed.
 
 Public methods:
 
@@ -124,6 +122,7 @@ Environment-only bootstrap requires:
 - `TGEDR_OBSERVABILITY_SERVICE`
 - `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_HEADERS` as a JSON object string.
+- Optional `TGEDR_OBSERVABILITY_EXPORTER_FILE` — path to a file where telemetry is also written (parent directories are created automatically).
 
 Example:
 
@@ -131,6 +130,7 @@ Example:
 export TGEDR_OBSERVABILITY_SERVICE="orders-service"
 export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/metrics"
 export TGEDR_OBSERVABILITY_EXPORTER_HEADERS='{"Authorization":"Bearer your-token"}'
+export TGEDR_OBSERVABILITY_EXPORTER_FILE="/var/log/myapp/telemetry.log"
 ```
 
 For logs, use the logs endpoint in `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`:
@@ -146,13 +146,33 @@ from tgedr_observability.commons import LOCAL_METRICS_URL, OtlpConfig
 from tgedr_observability.metrics import Metrics
 
 metrics_manager = Metrics.instance(
-  otlp_config=OtlpConfig(service="orders-service", endpoint=LOCAL_METRICS_URL),
+  otlp_config=OtlpConfig(service="orders-service", http_exporter_endpoint=LOCAL_METRICS_URL),
 )
 if metrics_manager is None:
   raise RuntimeError("Metrics bootstrap failed: missing config")
 
 metrics_manager.add_to_counter("orders.api.requests", 1, {"route": "/orders"})
 metrics_manager.add_to_histogram("orders.api.latency_s", 0.123, {"route": "/orders"})
+metrics_manager.force_flush()
+```
+
+Metrics with file exporter:
+
+```python
+from tgedr_observability.commons import OtlpConfig
+from tgedr_observability.metrics import Metrics
+
+metrics_manager = Metrics.instance(
+  otlp_config=OtlpConfig(
+    service="orders-service",
+    http_exporter_endpoint="http://localhost:4318/v1/metrics",
+    file_exporter_url="/var/log/myapp/metrics.log",
+  ),
+)
+if metrics_manager is None:
+  raise RuntimeError("Metrics bootstrap failed: missing config")
+
+metrics_manager.add_to_counter("orders.api.requests", 1, {"route": "/orders"})
 metrics_manager.force_flush()
 ```
 
@@ -177,7 +197,29 @@ from tgedr_observability.commons import OtlpConfig
 from tgedr_observability.logs import Logs
 
 logs_manager = Logs.instance(
-  otlp_config=OtlpConfig(service="orders-service", endpoint="http://localhost:4318/v1/logs"),
+  otlp_config=OtlpConfig(service="orders-service", http_exporter_endpoint="http://localhost:4318/v1/logs"),
+)
+if logs_manager is None:
+  raise RuntimeError("Logs bootstrap failed: missing config")
+
+logger = logging.getLogger(__name__)
+logger.info("orders api started")
+logs_manager.force_flush()
+```
+
+Logs with file exporter:
+
+```python
+import logging
+from tgedr_observability.commons import OtlpConfig
+from tgedr_observability.logs import Logs
+
+logs_manager = Logs.instance(
+  otlp_config=OtlpConfig(
+    service="orders-service",
+    http_exporter_endpoint="http://localhost:4318/v1/logs",
+    file_exporter_url="/var/log/myapp/logs.log",
+  ),
 )
 if logs_manager is None:
   raise RuntimeError("Logs bootstrap failed: missing config")

@@ -2,14 +2,17 @@
 
 import logging
 import os
+from pathlib import Path
 import signal
 import subprocess
+import tempfile
 import time
 import pytest
 from opentelemetry._logs import get_logger_provider
 
 from tgedr_observability.commons import (
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT,
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS,
     ENV_VAR_TGEDR_OBSERVABILITY_SERVICE,
 )
@@ -26,9 +29,12 @@ def module_lifecycle():
     original_endpoint = os.environ.get(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT)
     original_headers = os.environ.get(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS)
 
+    _tmpdir = tempfile.TemporaryDirectory()
+    os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE] = os.path.join(_tmpdir.name, "metrics.log")
     os.environ[ENV_VAR_TGEDR_OBSERVABILITY_SERVICE] = SERVICE_NAME
     os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT] = LOCAL_LOGS_URL
     os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS, None)
+
 
     # Start script in its own process group so teardown can kill children too
     proc = subprocess.Popen(
@@ -73,7 +79,9 @@ def module_lifecycle():
     else:
         os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS] = original_headers
 
-def test_logger(module_lifecycle, capfd) -> None:
+    os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE, None)
+
+def test_logger(module_lifecycle) -> None:
 
     Logs.instance()
     logger = logging.getLogger(__name__)
@@ -83,9 +91,9 @@ def test_logger(module_lifecycle, capfd) -> None:
     flushed = get_logger_provider().force_flush(10000) # type: ignore
     assert flushed is True
 
-    captured = capfd.readouterr()
-    combined = captured.out + captured.err
-    assert "This is an OpenTelemetry log record!" in combined
+    log_file = Path(os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE))
+    content = log_file.read_text(encoding="utf-8")
+    assert "This is an OpenTelemetry log record!" in content
 
 
 def test_logs_lifecycle_methods(module_lifecycle) -> None:
