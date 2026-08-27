@@ -146,15 +146,14 @@ def test_metrics_app_shutdown(module_lifecycle, monkeypatch) -> None:
     assert o._meter_provider is None
 
 
-def test_metrics_app_shutdown_early_return(monkeypatch) -> None:
-    monkeypatch.setattr(Metrics, "instance", staticmethod(lambda: None))
-
-    # Should return cleanly when provider is not initialized.
-    Metrics.app_shutdown()
-
-
-def test_metrics_instance_returns_none_without_config(monkeypatch) -> None:
+def test_metrics_instance_always_returns_instance(monkeypatch) -> None:
     monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, raising=False)
-    monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, raising=False)
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, LOCAL_METRICS_URL)
 
-    assert Metrics.instance() is None
+    o: Metrics = Metrics()  # pyright: ignore[reportAssignmentType]
+    o.shutdown()
+
+    instance = Metrics.instance()
+    assert instance is not None
+    assert instance._meter_provider is not None
+    instance.shutdown()

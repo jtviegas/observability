@@ -1,6 +1,7 @@
 """Unit tests for commons module configuration helpers."""
 
 from tgedr_observability.commons import (
+    DEFAULT_SERVICE_NAME,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE,
@@ -10,20 +11,31 @@ from tgedr_observability.commons import (
 )
 
 
-def test_resolve_from_env_without_endpoint_returns_none(monkeypatch) -> None:
+def test_resolve_from_env_without_endpoint_uses_defaults(monkeypatch) -> None:
     monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, "test-service")
     monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, raising=False)
     monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS, raising=False)
 
-    assert OtlpConfig.resolve_from_env() is None
+    config = OtlpConfig.resolve_from_env()
+
+    assert config is not None
+    assert config.service == "test-service"
+    assert config.http_exporter_endpoint is None
 
 
-def test_resolve_from_env_without_service_returns_none(monkeypatch) -> None:
+def test_resolve_from_env_without_service_uses_default(monkeypatch) -> None:
     monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, raising=False)
     monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, "http://localhost:4318/v1/metrics")
     monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS, '{"Authorization": "Bearer token"}')
 
-    assert OtlpConfig.resolve_from_env() is None
+    config = OtlpConfig.resolve_from_env()
+
+    assert config is not None
+    assert config.service == DEFAULT_SERVICE_NAME
+
+
+def test_otlp_config_defaults_service(monkeypatch) -> None:
+    assert OtlpConfig().service == DEFAULT_SERVICE_NAME
 
 
 def test_resolve_from_env_with_endpoint_and_headers(monkeypatch) -> None:

@@ -38,9 +38,10 @@ The Python package lives under `src/tgedr_observability` and currently exposes t
   - `TGEDR_OBSERVABILITY_EXPORTER_HEADERS`
   - `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE`
   - `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE`
-- `OtlpConfig`: frozen dataclass with `service`, optional `http_exporter_endpoint`, optional `http_exporter_headers`, optional `metrics_file_exporter_url`, and optional `logs_file_exporter_url`.
+- `OtlpConfig`: frozen dataclass with `service` (defaults to `"observability"`), optional `http_exporter_endpoint`, optional `http_exporter_headers`, optional `metrics_file_exporter_url`, and optional `logs_file_exporter_url`.
 - `OtlpConfig.resolve_from_env()`: helper that builds an `OtlpConfig` from env vars.
-  - Returns a config only when both service and endpoint are present.
+  - Returns a config only when the endpoint is present.
+  - `service` falls back to `"observability"` when `TGEDR_OBSERVABILITY_SERVICE` is not set.
   - Parses headers from JSON when provided.
   - Includes `metrics_file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE` and `logs_file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE` when set.
   - Returns `None` when required env vars are missing.
@@ -120,7 +121,7 @@ You can bootstrap in two ways:
 
 Environment-only bootstrap requires:
 
-- `TGEDR_OBSERVABILITY_SERVICE`
+- Optional `TGEDR_OBSERVABILITY_SERVICE` (defaults to `observability` when unset)
 - `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_HEADERS` as a JSON object string.
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE` — path to a file where metrics are also written (used by `Metrics`; parent directories are created automatically).

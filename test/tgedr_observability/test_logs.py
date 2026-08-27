@@ -128,8 +128,10 @@ def test_logs_app_shutdown(module_lifecycle) -> None:
     assert o._logger_provider is None
 
 
-def test_logs_app_shutdown_early_return(monkeypatch) -> None:
-    monkeypatch.setattr(Logs, "instance", staticmethod(lambda: None))
+def test_logs_instance_always_returns_instance(module_lifecycle) -> None:
+    o: Logs = Logs.instance()  # pyright: ignore[reportAssignmentType]
+    o.shutdown()
 
-    # Should return cleanly when provider is not initialized.
-    Logs.app_shutdown()
+    instance = Logs.instance()
+    assert instance is not None
+    assert instance._logger_provider is not None

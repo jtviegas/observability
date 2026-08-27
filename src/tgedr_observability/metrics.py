@@ -16,15 +16,12 @@ class Metrics(metaclass=SingletonMeta):
     """Singleton manager for meter creation and metric recording."""
 
     @staticmethod
-    def instance(otlp_config: OtlpConfig | None = None) -> "Metrics | None":
+    def instance(otlp_config: OtlpConfig | None = None) -> "Metrics":
         """Get the singleton instance of the Metrics manager."""
         instance = Metrics()  # pyright: ignore[reportReturnType]
         if instance._meter_provider is None:  # pyright: ignore[reportAttributeAccessIssue]
             config = otlp_config or OtlpConfig.resolve_from_env()
-            if config is not None:
-                instance._Metrics__bootstrap(config)  # pyright: ignore[reportAttributeAccessIssue]
-            else:
-                return None
+            instance._Metrics__bootstrap(config)  # pyright: ignore[reportAttributeAccessIssue]
         return instance  # pyright: ignore[reportReturnType]
 
     def __init__(self) -> None:
@@ -159,7 +156,5 @@ class Metrics(metaclass=SingletonMeta):
         ````
         """
         instance = Metrics.instance()
-        if instance is None:
-            return
         instance.force_flush()
         instance.shutdown()

@@ -17,18 +17,13 @@ from tgedr_observability.commons import OtlpConfig
 class Logs(metaclass=SingletonMeta):
     """Singleton manager for configuring OpenTelemetry logging."""
 
-    ENV_VAR_TGEDR_OBSERVABILITY_SERVICE: str = "TGEDR_OBSERVABILITY_SERVICE"
-
     @staticmethod
-    def instance(otlp_config: OtlpConfig | None = None) -> "Logs | None":
+    def instance(otlp_config: OtlpConfig | None = None) -> "Logs":
         """Get the singleton instance of the Logs manager."""
         instance = Logs()  # pyright: ignore[reportReturnType]
         if instance._logger_provider is None:  # pyright: ignore[reportAttributeAccessIssue]
             config = otlp_config or OtlpConfig.resolve_from_env()
-            if config is not None:
-                instance._Logs__bootstrap(config)  # pyright: ignore[reportAttributeAccessIssue]
-            else:
-                return None
+            instance._Logs__bootstrap(config)  # pyright: ignore[reportAttributeAccessIssue]
         return instance  # pyright: ignore[reportReturnType]
 
     def __init__(self) -> None:
@@ -105,10 +100,5 @@ class Logs(metaclass=SingletonMeta):
             ````
         """
         instance = Logs.instance()
-        if instance is None:
-            return
         instance.force_flush()
         instance.shutdown()
-
-
-Logs.instance()
