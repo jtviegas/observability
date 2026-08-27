@@ -11,7 +11,7 @@ from opentelemetry.sdk._logs.export import (
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from tgedr_pycommons.utils.singleton import SingletonMeta
-from tgedr_observability.commons import OtlpConfig
+from tgedr_observability.commons import DayOfYearRotatingFile, OtlpConfig
 
 
 class Logs(metaclass=SingletonMeta):
@@ -42,9 +42,12 @@ class Logs(metaclass=SingletonMeta):
 
             # Add the file log exporter if a file URL is specified
             if otlp_config.logs_file_exporter_url is not None:
-                Path(otlp_config.logs_file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
-                Path(otlp_config.logs_file_exporter_url).touch()
-                self._log_file = open(otlp_config.logs_file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
+                if otlp_config.file_exporter_rotation:
+                    self._log_file = DayOfYearRotatingFile(otlp_config.logs_file_exporter_url)
+                else:
+                    Path(otlp_config.logs_file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
+                    Path(otlp_config.logs_file_exporter_url).touch()
+                    self._log_file = open(otlp_config.logs_file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
                 file_exporter = ConsoleLogRecordExporter(out=self._log_file)
                 provider.add_log_record_processor(BatchLogRecordProcessor(file_exporter))
 

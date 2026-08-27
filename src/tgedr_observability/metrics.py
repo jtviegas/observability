@@ -9,7 +9,7 @@ from opentelemetry.metrics import Instrument
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from tgedr_pycommons.utils.singleton import SingletonMeta
-from tgedr_observability.commons import ObservabilityError, OtlpConfig
+from tgedr_observability.commons import DayOfYearRotatingFile, ObservabilityError, OtlpConfig
 
 
 class Metrics(metaclass=SingletonMeta):
@@ -45,9 +45,12 @@ class Metrics(metaclass=SingletonMeta):
 
             # Add the file metric exporter if a file URL is specified
             if otlp_config.metrics_file_exporter_url is not None:
-                Path(otlp_config.metrics_file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
-                Path(otlp_config.metrics_file_exporter_url).touch()
-                self._log_file = open(otlp_config.metrics_file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
+                if otlp_config.file_exporter_rotation:
+                    self._log_file = DayOfYearRotatingFile(otlp_config.metrics_file_exporter_url)
+                else:
+                    Path(otlp_config.metrics_file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
+                    Path(otlp_config.metrics_file_exporter_url).touch()
+                    self._log_file = open(otlp_config.metrics_file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
                 file_exporter = ConsoleMetricExporter(out=self._log_file)
                 reader_file = PeriodicExportingMetricReader(file_exporter)
                 readers.append(reader_file)
