@@ -38,31 +38,35 @@ class Metrics(metaclass=SingletonMeta):
 
     def __bootstrap(self, otlp_config: OtlpConfig) -> None:
         """Initialize the metrics provider and configure metric exporting."""
-        resource = Resource.create(attributes={SERVICE_NAME: otlp_config.service})  # pyright: ignore[reportOptionalMemberAccess]
-        readers = []
-        console_exporter = ConsoleMetricExporter()
-        reader_console = PeriodicExportingMetricReader(console_exporter)
-        readers.append(reader_console)
+        if self._meter_provider is None:
+            resource = Resource.create(attributes={SERVICE_NAME: otlp_config.service})  # pyright: ignore[reportOptionalMemberAccess]
+            readers = []
+            # Add the console metric exporter by default
+            console_exporter = ConsoleMetricExporter()
+            reader_console = PeriodicExportingMetricReader(console_exporter)
+            readers.append(reader_console)
 
-        if otlp_config.file_exporter_url is not None:
-            Path(otlp_config.file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
-            Path(otlp_config.file_exporter_url).touch()
-            self._log_file = open(otlp_config.file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
-            file_exporter = ConsoleMetricExporter(out=self._log_file)
-            reader_file = PeriodicExportingMetricReader(file_exporter)
-            readers.append(reader_file)
+            # Add the file metric exporter if a file URL is specified
+            if otlp_config.file_exporter_url is not None:
+                Path(otlp_config.file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
+                Path(otlp_config.file_exporter_url).touch()
+                self._log_file = open(otlp_config.file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
+                file_exporter = ConsoleMetricExporter(out=self._log_file)
+                reader_file = PeriodicExportingMetricReader(file_exporter)
+                readers.append(reader_file)
 
-        if otlp_config.http_exporter_endpoint is not None:
-            http_exporter = OTLPMetricExporter(
-                endpoint=otlp_config.http_exporter_endpoint,
-                headers=otlp_config.http_exporter_headers,
-            )
-            reader_http = PeriodicExportingMetricReader(http_exporter, export_interval_millis=5000)
-            readers.append(reader_http)
+            # Add the HTTP metric exporter if an endpoint is specified
+            if otlp_config.http_exporter_endpoint is not None:
+                http_exporter = OTLPMetricExporter(
+                    endpoint=otlp_config.http_exporter_endpoint,
+                    headers=otlp_config.http_exporter_headers,
+                )
+                reader_http = PeriodicExportingMetricReader(http_exporter, export_interval_millis=5000)
+                readers.append(reader_http)
 
-        provider = MeterProvider(metric_readers=readers, resource=resource)
-        metrics.set_meter_provider(provider)  # Set the global meter provider
-        self._meter_provider = provider
+            provider = MeterProvider(metric_readers=readers, resource=resource)
+            metrics.set_meter_provider(provider)  # Set the global meter provider
+            self._meter_provider = provider
 
     def _get_meter(self, name: str) -> metrics.Meter:
         toponomy: list[str] = name.split(".")

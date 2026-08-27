@@ -42,8 +42,10 @@ class Logs(metaclass=SingletonMeta):
         if self._logger_provider is None:
             resource = Resource.create(attributes={SERVICE_NAME: otlp_config.service})  # pyright: ignore[reportOptionalMemberAccess]
             provider = LoggerProvider(resource=resource)
+            # Add the console log exporter by default
             provider.add_log_record_processor(BatchLogRecordProcessor(ConsoleLogRecordExporter()))
 
+            # Add the file log exporter if a file URL is specified
             if otlp_config.file_exporter_url is not None:
                 Path(otlp_config.file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
                 Path(otlp_config.file_exporter_url).touch()
@@ -51,6 +53,7 @@ class Logs(metaclass=SingletonMeta):
                 file_exporter = ConsoleLogRecordExporter(out=self._log_file)
                 provider.add_log_record_processor(BatchLogRecordProcessor(file_exporter))
 
+            # Add the HTTP log exporter if an endpoint is specified
             if otlp_config.http_exporter_endpoint is not None:
                 otlp_exporter = OTLPLogExporter(
                     endpoint=otlp_config.http_exporter_endpoint,

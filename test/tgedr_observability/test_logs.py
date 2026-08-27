@@ -91,13 +91,13 @@ def test_logger(module_lifecycle) -> None:
     flushed = get_logger_provider().force_flush(10000) # type: ignore
     assert flushed is True
 
-    log_file = Path(os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE))
+    log_file = Path(os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE)) # pyright: ignore[reportArgumentType]
     content = log_file.read_text(encoding="utf-8")
     assert "This is an OpenTelemetry log record!" in content
 
 
 def test_logs_lifecycle_methods(module_lifecycle) -> None:
-    o = Logs.instance()
+    o: Logs = Logs.instance() # pyright: ignore[reportAssignmentType]
     o.shutdown()
 
     assert o.force_flush() is False
@@ -118,7 +118,7 @@ def test_logs_lifecycle_methods(module_lifecycle) -> None:
 
 
 def test_logs_app_shutdown(module_lifecycle) -> None:
-    o = Logs.instance()
+    o: Logs = Logs.instance() # pyright: ignore[reportAssignmentType]
     o.shutdown()
     Logs.app_shutdown()
 

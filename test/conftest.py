@@ -3,10 +3,11 @@
 from pathlib import Path
 import sys
 import tempfile
+from typing import Generator
 import pytest
 
 
-sys.path.insert(0, Path(__file__).parent.parent.joinpath("src").absolute())  # isort:skip
+sys.path.insert(0, str(Path(__file__).parent.parent.joinpath("src").absolute()))  # isort:skip
 
 
 @pytest.fixture(scope="session")
@@ -17,11 +18,11 @@ def resources_folder() -> str:
         test resources folder path
 
     """
-    return Path(__file__).parent.joinpath("resources").absolute()
+    return str(Path(__file__).parent.joinpath("resources").absolute())
 
 
 @pytest.fixture(scope="session")
-def temporary_folder():
+def temporary_folder() -> Generator[str, None, None]:
     """Provides a temporary folder for testing purposes.
 
     Yields:
