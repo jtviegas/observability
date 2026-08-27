@@ -14,6 +14,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.44.0",
     "opentelemetry-sdk>=1.44.0",
     "pandas>=2.3.0,<3.0.0",
+    "matplotlib>=3.8.0",
     "tgedr-pycommons>=1.2.1",
 ]
 [dependency-groups]
