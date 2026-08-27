@@ -3,6 +3,8 @@
 from tgedr_observability.commons import (
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS,
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE,
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE,
     ENV_VAR_TGEDR_OBSERVABILITY_SERVICE,
     OtlpConfig,
 )
@@ -38,3 +40,18 @@ def test_resolve_from_env_with_endpoint_and_headers(monkeypatch) -> None:
     assert config.service == "test-service"
     assert config.http_exporter_endpoint == endpoint
     assert config.http_exporter_headers == {"Authorization": "Bearer token", "x-scope": "test"}
+    assert config.metrics_file_exporter_url is None
+    assert config.logs_file_exporter_url is None
+
+
+def test_resolve_from_env_with_file_exporters(monkeypatch) -> None:
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_SERVICE, "test-service")
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, "http://localhost:4318/v1/metrics")
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE, "/tmp/metrics.log")
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE, "/tmp/logs.log")
+
+    config = OtlpConfig.resolve_from_env()
+
+    assert config is not None
+    assert config.metrics_file_exporter_url == "/tmp/metrics.log"
+    assert config.logs_file_exporter_url == "/tmp/logs.log"

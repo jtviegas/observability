@@ -8,7 +8,8 @@ LOCAL_METRICS_URL: str = "http://localhost:4318/v1/metrics"
 ENV_VAR_TGEDR_OBSERVABILITY_SERVICE: str = "TGEDR_OBSERVABILITY_SERVICE"
 ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT: str = "TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT"
 ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS: str = "TGEDR_OBSERVABILITY_EXPORTER_HEADERS"
-ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE: str = "TGEDR_OBSERVABILITY_EXPORTER_FILE"
+ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE: str = "TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE"
+ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE: str = "TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE"
 
 
 @dataclass(frozen=True)
@@ -16,7 +17,8 @@ class OtlpConfig:  # noqa: D101
     service: str
     http_exporter_endpoint: str | None = None
     http_exporter_headers: dict[str, str] | None = None
-    file_exporter_url: str | None = None
+    metrics_file_exporter_url: str | None = None
+    logs_file_exporter_url: str | None = None
 
     @staticmethod
     def resolve_from_env() -> "OtlpConfig | None":
@@ -37,7 +39,8 @@ class OtlpConfig:  # noqa: D101
                 service=service,
                 http_exporter_endpoint=endpoint,
                 http_exporter_headers=headers_dict,
-                file_exporter_url=os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE),
+                metrics_file_exporter_url=os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE),
+                logs_file_exporter_url=os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE),
             )
 
         return result

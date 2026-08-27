@@ -46,10 +46,10 @@ class Logs(metaclass=SingletonMeta):
             provider.add_log_record_processor(BatchLogRecordProcessor(ConsoleLogRecordExporter()))
 
             # Add the file log exporter if a file URL is specified
-            if otlp_config.file_exporter_url is not None:
-                Path(otlp_config.file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
-                Path(otlp_config.file_exporter_url).touch()
-                self._log_file = open(otlp_config.file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
+            if otlp_config.logs_file_exporter_url is not None:
+                Path(otlp_config.logs_file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
+                Path(otlp_config.logs_file_exporter_url).touch()
+                self._log_file = open(otlp_config.logs_file_exporter_url, "a", encoding="utf-8")  # noqa: PTH123, SIM115
                 file_exporter = ConsoleLogRecordExporter(out=self._log_file)
                 provider.add_log_record_processor(BatchLogRecordProcessor(file_exporter))
 

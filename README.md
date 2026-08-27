@@ -36,12 +36,13 @@ The Python package lives under `src/tgedr_observability` and currently exposes t
   - `TGEDR_OBSERVABILITY_SERVICE`
   - `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
   - `TGEDR_OBSERVABILITY_EXPORTER_HEADERS`
-  - `TGEDR_OBSERVABILITY_EXPORTER_FILE`
-- `OtlpConfig`: frozen dataclass with `service`, optional `http_exporter_endpoint`, optional `http_exporter_headers`, and optional `file_exporter_url`.
+  - `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE`
+  - `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE`
+- `OtlpConfig`: frozen dataclass with `service`, optional `http_exporter_endpoint`, optional `http_exporter_headers`, optional `metrics_file_exporter_url`, and optional `logs_file_exporter_url`.
 - `OtlpConfig.resolve_from_env()`: helper that builds an `OtlpConfig` from env vars.
   - Returns a config only when both service and endpoint are present.
   - Parses headers from JSON when provided.
-  - Includes `file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_FILE` when set.
+  - Includes `metrics_file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE` and `logs_file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE` when set.
   - Returns `None` when required env vars are missing.
 - `ObservabilityError`: package-specific exception used for observability validation errors.
 
@@ -58,7 +59,7 @@ Bootstrap behavior:
 3. When a config is available, private method `__bootstrap(otlp_config)` runs and configures:
   - `Resource` with `service.name` from `otlp_config.service`.
   - `ConsoleMetricExporter` through a `PeriodicExportingMetricReader` (always enabled).
-  - Optional file exporter (`ConsoleMetricExporter` writing to a file) when `otlp_config.file_exporter_url` is set. The parent directory is created automatically.
+  - Optional file exporter (`ConsoleMetricExporter` writing to a file) when `otlp_config.metrics_file_exporter_url` is set. The parent directory is created automatically.
   - Optional OTLP HTTP exporter (`OTLPMetricExporter`) when `otlp_config.http_exporter_endpoint` is set.
 4. The configured provider is installed globally with `metrics.set_meter_provider(provider)`.
 5. If no config can be resolved, `instance()` returns `None`.
@@ -98,7 +99,7 @@ Bootstrap behavior:
 3. When a config is available, private method `__bootstrap(otlp_config)` runs and configures:
   - `Resource` with `service.name` from `otlp_config.service`.
   - `BatchLogRecordProcessor(ConsoleLogRecordExporter())` (always enabled).
-  - Optional file exporter (`ConsoleLogRecordExporter` writing to a file) when `otlp_config.file_exporter_url` is set. The parent directory is created automatically.
+  - Optional file exporter (`ConsoleLogRecordExporter` writing to a file) when `otlp_config.logs_file_exporter_url` is set. The parent directory is created automatically.
   - Optional `BatchLogRecordProcessor(OTLPLogExporter(...))` when `otlp_config.http_exporter_endpoint` is set.
 4. The provider is installed globally with `set_logger_provider(provider)`.
 5. `LoggingHandler` is attached through `logging.basicConfig(..., force=True)`.
@@ -122,7 +123,8 @@ Environment-only bootstrap requires:
 - `TGEDR_OBSERVABILITY_SERVICE`
 - `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_HEADERS` as a JSON object string.
-- Optional `TGEDR_OBSERVABILITY_EXPORTER_FILE` — path to a file where telemetry is also written (parent directories are created automatically).
+- Optional `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE` — path to a file where metrics are also written (used by `Metrics`; parent directories are created automatically).
+- Optional `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE` — path to a file where logs are also written (used by `Logs`; parent directories are created automatically).
 
 Example:
 
@@ -130,13 +132,14 @@ Example:
 export TGEDR_OBSERVABILITY_SERVICE="orders-service"
 export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/metrics"
 export TGEDR_OBSERVABILITY_EXPORTER_HEADERS='{"Authorization":"Bearer your-token"}'
-export TGEDR_OBSERVABILITY_EXPORTER_FILE="/var/log/myapp/telemetry.log"
+export TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE="/var/log/myapp/metrics.log"
 ```
 
-For logs, use the logs endpoint in `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT`:
+For logs, use the logs endpoint in `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT` and the logs file variable:
 
 ```bash
 export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/logs"
+export TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE="/var/log/myapp/logs.log"
 ```
 
 ### metrics
@@ -166,7 +169,7 @@ metrics_manager = Metrics.instance(
   otlp_config=OtlpConfig(
     service="orders-service",
     http_exporter_endpoint="http://localhost:4318/v1/metrics",
-    file_exporter_url="/var/log/myapp/metrics.log",
+    metrics_file_exporter_url="/var/log/myapp/metrics.log",
   ),
 )
 if metrics_manager is None:
@@ -218,7 +221,7 @@ logs_manager = Logs.instance(
   otlp_config=OtlpConfig(
     service="orders-service",
     http_exporter_endpoint="http://localhost:4318/v1/logs",
-    file_exporter_url="/var/log/myapp/logs.log",
+    logs_file_exporter_url="/var/log/myapp/logs.log",
   ),
 )
 if logs_manager is None:

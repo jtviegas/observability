@@ -24,7 +24,7 @@ _METRICS_LOG = os.path.join(_metrics_tmpdir.name, "metrics.log")
 
 
 def _otlp_config() -> OtlpConfig:
-    return OtlpConfig(service=SERVICE_NAME, http_exporter_endpoint=LOCAL_METRICS_URL, file_exporter_url=_METRICS_LOG)
+    return OtlpConfig(service=SERVICE_NAME, http_exporter_endpoint=LOCAL_METRICS_URL, metrics_file_exporter_url=_METRICS_LOG)
 
 @pytest.fixture(scope="module", autouse=True)
 def module_lifecycle():
