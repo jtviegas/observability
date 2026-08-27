@@ -157,3 +157,37 @@ def test_metrics_instance_always_returns_instance(monkeypatch) -> None:
     assert instance is not None
     assert instance._meter_provider is not None
     instance.shutdown()
+
+
+def test_metrics_file_exporter_rotation(module_lifecycle) -> None:
+    from datetime import datetime, timezone
+
+    from tgedr_observability.commons import DayOfYearRotatingFile
+
+    rotation_dir = tempfile.TemporaryDirectory()
+    base_log = os.path.join(rotation_dir.name, "metrics.log")
+
+    o: Metrics = Metrics()  # pyright: ignore[reportAssignmentType]
+    o.shutdown()
+
+    o = Metrics.instance(  # pyright: ignore[reportAssignmentType]
+        otlp_config=OtlpConfig(
+            service=SERVICE_NAME,
+            metrics_file_exporter_url=base_log,
+            file_exporter_rotation=True,
+        )
+    )
+    assert isinstance(o._log_file, DayOfYearRotatingFile)
+    # Global meter provider is set once per process; earlier tests may own it,
+    # so exercise the wired rotating file directly to verify day-of-year output.
+    o._log_file.write("Counter metric for test.rotation.counter")
+    o._log_file.flush()
+
+    today = datetime.now(tz=timezone.utc).timetuple().tm_yday
+    rotated = Path(rotation_dir.name) / f"metrics.{today:03d}.log"
+    assert rotated.exists()
+    assert "Counter metric for test.rotation.counter" in rotated.read_text(encoding="utf-8")
+
+    o.shutdown()
+    assert o._log_file is None
+    rotation_dir.cleanup()

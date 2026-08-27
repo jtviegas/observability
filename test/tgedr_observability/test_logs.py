@@ -135,3 +135,37 @@ def test_logs_instance_always_returns_instance(module_lifecycle) -> None:
     instance = Logs.instance()
     assert instance is not None
     assert instance._logger_provider is not None
+
+
+def test_logs_file_exporter_rotation(module_lifecycle) -> None:
+    from datetime import datetime, timezone
+
+    from tgedr_observability.commons import DayOfYearRotatingFile, OtlpConfig
+
+    rotation_dir = tempfile.TemporaryDirectory()
+    base_log = os.path.join(rotation_dir.name, "logs.log")
+
+    o: Logs = Logs.instance()  # pyright: ignore[reportAssignmentType]
+    o.shutdown()
+
+    o = Logs.instance(  # pyright: ignore[reportAssignmentType]
+        otlp_config=OtlpConfig(
+            service=SERVICE_NAME,
+            logs_file_exporter_url=base_log,
+            file_exporter_rotation=True,
+        )
+    )
+    assert isinstance(o._log_file, DayOfYearRotatingFile)
+    # Global logger provider is set once per process; earlier tests may own it,
+    # so exercise the wired rotating file directly to verify day-of-year output.
+    o._log_file.write("rotation log record")
+    o._log_file.flush()
+
+    today = datetime.now(tz=timezone.utc).timetuple().tm_yday
+    rotated = Path(rotation_dir.name) / f"logs.{today:03d}.log"
+    assert rotated.exists()
+    assert "rotation log record" in rotated.read_text(encoding="utf-8")
+
+    o.shutdown()
+    assert o._log_file is None
+    rotation_dir.cleanup()
