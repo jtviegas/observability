@@ -21,11 +21,12 @@ This repository is an early-stage observability toolkit built around a small Pyt
 
 ## source code guide
 
-The Python package lives under `src/tgedr_observability` and currently exposes three modules:
+The Python package lives under `src/tgedr_observability` and currently exposes these modules:
 
 - `commons.py`: shared constants and common types.
 - `metrics.py`: singleton wrapper for OpenTelemetry metrics setup and recording.
 - `logs.py`: singleton wrapper for OpenTelemetry logs setup and recording.
+- `plot.py`: helpers to read an exported metrics file and plot a metric as a line graph.
 
 ### commons.py
 
@@ -111,6 +112,37 @@ Public methods:
 - `force_flush(timeout_millis=10000)`
 - `shutdown()` (also detaches and closes the installed handler)
 - `app_shutdown()` (flush + shutdown convenience hook; no-op if `instance()` resolves to `None`)
+
+### plot.py
+
+`plot.py` reads a metrics export file produced by the file exporter
+(`ConsoleMetricExporter` output — one JSON document per flush, appended to the
+file) and renders a metric as a line graph across its tag (attribute) values.
+
+Functions:
+
+- `load_metric_points(path, metric_name=None, attr_key=None)`: returns
+  `(metric_name, attr_key, [(label, value), ...])`. Handles files with multiple
+  concatenated JSON documents and keeps the last exported value per label.
+  Defaults to the first metric / first attribute found. Raises
+  `ObservabilityError` when no matching metric is found.
+- `plot_metric(path, metric_name=None, attr_key=None, save_path=None)`: sorts
+  points by value (descending, since tag values are categorical) and plots a
+  line graph. When `save_path` is set, the figure is written there and the path
+  returned; otherwise the figure is shown and `None` is returned. Uses a
+  non-interactive backend so it is safe in headless/CI environments.
+
+Example:
+
+```python
+from tgedr_observability.plot import plot_metric
+
+# save to a file
+plot_metric("/var/log/myapp/metrics.log", save_path="new_rows.png")
+
+# or show interactively, choosing a specific metric and tag
+plot_metric("/var/log/myapp/metrics.log", metric_name="new_rows", attr_key="table")
+```
 
 ## usage examples
 

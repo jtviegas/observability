@@ -1,0 +1,42 @@
+{
+    "resource_metrics": [
+        {
+            "resource": {
+                "attributes": {
+                    "telemetry.sdk.language": "python",
+                    "telemetry.sdk.name": "opentelemetry",
+                    "telemetry.sdk.version": "1.44.0",
+                    "service.instance.id": "48760f27-b7af-4fa6-8089-c382cc02f24a",
+                    "service.name": "fdafaers"
+                },
+                "schema_url": ""
+            },
+            "scope_metrics": [
+                {
+                    "scope": {
+                        "name": "fda_faers.ingest_period_files",
+                        "version": "",
+                        "schema_url": "",
+                        "attributes": null
+                    },
+                    "metrics": [
+                        {
+                            "name": "new_rows",
+                            "description": "Gauge metric for fda_faers.ingest_period_files.new_rows",
+                            "unit": "1",
+                            "data": {
+                                "data_points": [
+                                    {"attributes": {"table": "drug"}, "start_time_unix_nano": null, "time_unix_nano": 1787862239983853728, "value": 872470, "exemplars": []},
+                                    {"attributes": {"table": "reac"}, "start_time_unix_nano": null, "time_unix_nano": 1787862239983853728, "value": 980673, "exemplars": []},
+                                    {"attributes": {"table": "demo"}, "start_time_unix_nano": null, "time_unix_nano": 1787862239983853728, "value": 234146, "exemplars": []}
+                                ]
+                            }
+                        }
+                    ],
+                    "schema_url": ""
+                }
+            ],
+            "schema_url": ""
+        }
+    ]
+}
