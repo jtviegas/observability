@@ -3,13 +3,14 @@
 The file exporter configured by `Metrics` writes `ConsoleMetricExporter`
 output: one JSON document per flush, appended to the file. A single file can
 therefore contain several concatenated JSON documents. These helpers parse that
-format and render a gauge metric as a line graph across its tag (attribute)
-values.
+format and render a metric as a time series: one line per tag (attribute) value,
+with the export timestamp on the x-axis.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,22 +40,22 @@ def _iter_json_documents(text: str) -> Iterator[dict]:
         index = offset
 
 
-def load_metric_points(
+def load_metric_series(
     path: str | Path,
     metric_name: str | None = None,
     attr_key: str | None = None,
-) -> tuple[str, str, list[tuple[str, float]]]:
-    """Extract (label, value) pairs for one metric from an exported metrics file.
+) -> tuple[str, str, dict[str, list[tuple[datetime, float]]]]:
+    """Extract time series per tag value for one metric from a metrics file.
 
     Args:
         path: path to the metrics export file (one or more JSON documents).
         metric_name: metric to read; defaults to the first metric found.
-        attr_key: attribute used as the x-axis label; defaults to the first
+        attr_key: attribute used to split series; defaults to the first
             attribute key found on a data point.
 
     Returns:
-        A tuple of (metric_name, attr_key, [(label, value), ...]) taking the
-        last exported value for each label.
+        A tuple of (metric_name, attr_key, series) where `series` maps each tag
+        value to a list of `(timestamp, value)` pairs sorted by timestamp.
 
     Raises:
         ObservabilityError: when no matching metric is found.
@@ -63,7 +64,7 @@ def load_metric_points(
 
     resolved_name: str | None = None
     resolved_attr = attr_key
-    values_by_label: dict[str, float] = {}
+    series: dict[str, list[tuple[datetime, float]]] = {}
 
     for document in _iter_json_documents(text):
         for resource_metric in document.get("resource_metrics", []):
@@ -77,13 +78,17 @@ def load_metric_points(
                         if resolved_attr is None:
                             resolved_attr = next(iter(attributes), "index")
                         label = str(attributes.get(resolved_attr, "?"))
-                        values_by_label[label] = float(point["value"])
+                        timestamp = datetime.fromtimestamp(point["time_unix_nano"] / 1_000_000_000, tz=UTC)
+                        series.setdefault(label, []).append((timestamp, float(point["value"])))
 
     if resolved_name is None:
         error_message = f"no matching metric found in {path}"
         raise ObservabilityError(error_message)
 
-    return resolved_name, resolved_attr or "index", list(values_by_label.items())
+    for points in series.values():
+        points.sort(key=lambda item: item[0])
+
+    return resolved_name, resolved_attr or "index", series
 
 
 def plot_metric(
@@ -92,15 +97,15 @@ def plot_metric(
     attr_key: str | None = None,
     save_path: str | Path | None = None,
 ) -> str | None:
-    """Read a metrics export file and plot a metric as a line graph.
+    """Read a metrics export file and plot a metric as a time series.
 
-    Points are sorted by value (descending) so the connecting line is readable
-    for categorical x-axis (tag) values.
+    Draws one line per tag (attribute) value, with the export timestamp on the
+    x-axis.
 
     Args:
         path: path to the metrics export file.
         metric_name: metric to plot; defaults to the first metric found.
-        attr_key: attribute used as the x-axis; defaults to the first found.
+        attr_key: attribute used to split series; defaults to the first found.
         save_path: when set, the figure is written here and the path returned;
             otherwise the figure is shown interactively and `None` is returned.
 
@@ -108,19 +113,21 @@ def plot_metric(
         The saved file path (as a string) when `save_path` is provided, else
         `None`.
     """
-    resolved_name, resolved_attr, points = load_metric_points(path, metric_name, attr_key)
-    points.sort(key=lambda item: item[1], reverse=True)
-    labels = [label for label, _ in points]
-    values = [value for _, value in points]
+    resolved_name, resolved_attr, series = load_metric_series(path, metric_name, attr_key)
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(labels, values, marker="o", linewidth=2)
-    for x, y in zip(labels, values, strict=True):
-        ax.annotate(f"{y:,.0f}", (x, y), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
-    ax.set_title(f"{resolved_name} by {resolved_attr}")
-    ax.set_xlabel(resolved_attr)
+    for label in sorted(series):
+        points = series[label]
+        timestamps = [ts for ts, _ in points]
+        values = [value for _, value in points]
+        ax.plot(timestamps, values, marker="o", linewidth=2, label=label)
+
+    ax.set_title(f"{resolved_name} over time")
+    ax.set_xlabel("timestamp")
     ax.set_ylabel(resolved_name)
+    ax.legend(title=resolved_attr)
     ax.grid(visible=True, linestyle="--", alpha=0.4)
+    fig.autofmt_xdate()
     fig.tight_layout()
 
     if save_path is not None:
