@@ -112,6 +112,9 @@ def plot_metric(
     Returns:
         The saved file path (as a string) when `save_path` is provided, else
         `None`.
+
+    Example:
+        uv run python -c "from tgedr_observability.plot import plot_metric; plot_metric('../fda_faers/otel/metrics','new_rows', 'table', save_path='output.png')"
     """
     resolved_name, resolved_attr, series = load_metric_series(path, metric_name, attr_key)
 

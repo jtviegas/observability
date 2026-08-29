@@ -45,8 +45,10 @@ class Metrics(metaclass=SingletonMeta):
 
             # Add the file metric exporter if a file URL is specified
             if otlp_config.metrics_file_exporter_url is not None:
-                if otlp_config.file_exporter_rotation:
-                    self._log_file = DayOfYearRotatingFile(otlp_config.metrics_file_exporter_url)
+                if otlp_config.file_rotation_days is not None:
+                    self._log_file = DayOfYearRotatingFile(
+                        otlp_config.metrics_file_exporter_url, retention_days=otlp_config.file_rotation_days
+                    )
                 else:
                     Path(otlp_config.metrics_file_exporter_url).parent.mkdir(parents=True, exist_ok=True)
                     Path(otlp_config.metrics_file_exporter_url).touch()

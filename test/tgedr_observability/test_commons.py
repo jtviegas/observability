@@ -7,14 +7,14 @@ from pathlib import Path
 from tgedr_observability.commons import (
     DEFAULT_SERVICE_NAME,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT,
-    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION,
+    ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE,
     ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE,
     ENV_VAR_TGEDR_OBSERVABILITY_SERVICE,
     DayOfYearRotatingFile,
     OtlpConfig,
-    day_of_year_path,
+    dated_path,
 )
 
 
@@ -74,38 +74,45 @@ def test_resolve_from_env_with_file_exporters(monkeypatch) -> None:
     assert config is not None
     assert config.metrics_file_exporter_url == "/tmp/metrics.log"
     assert config.logs_file_exporter_url == "/tmp/logs.log"
-    assert config.file_exporter_rotation is False
+    assert config.file_rotation_days is None
 
 
-def test_resolve_from_env_file_rotation_flag(monkeypatch) -> None:
+def test_resolve_from_env_file_rotation_days(monkeypatch) -> None:
     monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT, "http://localhost:4318/v1/metrics")
-    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION, "true")
-    assert OtlpConfig.resolve_from_env().file_exporter_rotation is True
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS, "7")
+    assert OtlpConfig.resolve_from_env().file_rotation_days == 7
 
-    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION, "0")
-    assert OtlpConfig.resolve_from_env().file_exporter_rotation is False
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS, "0")
+    assert OtlpConfig.resolve_from_env().file_rotation_days is None
 
-    monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION, raising=False)
-    assert OtlpConfig.resolve_from_env().file_exporter_rotation is False
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS, "-1")
+    assert OtlpConfig.resolve_from_env().file_rotation_days is None
+
+    monkeypatch.delenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS, raising=False)
+    assert OtlpConfig.resolve_from_env().file_rotation_days is None
+
+    # Test with invalid value
+    monkeypatch.setenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS, "invalid")
+    assert OtlpConfig.resolve_from_env().file_rotation_days is None
 
 
-def test_day_of_year_path() -> None:
-    when = datetime(2024, 1, 1, tzinfo=timezone.utc)  # day 001
-    assert day_of_year_path("/var/log/app/metrics.log", when).name == "metrics.001.log"
+def test_dated_path() -> None:
+    when = datetime(2026, 8, 29, tzinfo=timezone.utc)  # YYYYMMDD: 20260829
+    assert dated_path("/var/log/app/metrics.log", when).name == "metrics.20260829.log"
 
-    leap_day = datetime(2024, 12, 31, tzinfo=timezone.utc)  # day 366 (leap year)
-    assert day_of_year_path("/var/log/app/metrics.log", leap_day).name == "metrics.366.log"
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)  # YYYYMMDD: 20260101
+    assert dated_path("/var/log/app/metrics.log", when).name == "metrics.20260101.log"
 
 
-def test_rotating_file_writes_to_day_file(tmp_path: Path) -> None:
+def test_rotating_file_writes_to_dated_file(tmp_path: Path) -> None:
     base = tmp_path / "metrics.log"
     rotating = DayOfYearRotatingFile(base)
 
     rotating.write("hello")
     rotating.flush()
 
-    today = datetime.now(tz=timezone.utc).timetuple().tm_yday
-    target = tmp_path / f"metrics.{today:03d}.log"
+    today = datetime.now(tz=timezone.utc).strftime("%Y%m%d")
+    target = tmp_path / f"metrics.{today}.log"
     assert target.exists()
     assert target.read_text(encoding="utf-8") == "hello"
 
@@ -116,32 +123,37 @@ def test_rotating_file_writes_to_day_file(tmp_path: Path) -> None:
     assert rotating.closed is True
 
 
-def test_rotating_file_overwrites_stale_previous_year(tmp_path: Path, monkeypatch) -> None:
+def test_rotating_file_overwrites_stale_previous_day(tmp_path: Path, monkeypatch) -> None:
     base = tmp_path / "metrics.log"
-    now = datetime(2025, 3, 1, tzinfo=timezone.utc)  # day 060
+    now = datetime(2026, 8, 29, tzinfo=timezone.utc)  # 20260829
+    yesterday = datetime(2026, 8, 28, tzinfo=timezone.utc)  # 20260828
     monkeypatch.setattr("tgedr_observability.commons.datetime", _FakeDatetime(now))
 
-    stale = tmp_path / "metrics.060.log"
-    stale.write_text("last-year-data", encoding="utf-8")
-    prev_year_ts = datetime(2024, 3, 1, tzinfo=timezone.utc).timestamp()
-    os.utime(stale, (prev_year_ts, prev_year_ts))
+    # Create a file from yesterday
+    old = tmp_path / "metrics.20260828.log"
+    old.write_text("yesterday-data", encoding="utf-8")
 
     rotating = DayOfYearRotatingFile(base)
     rotating.write("fresh")
     rotating.close()
 
-    assert stale.read_text(encoding="utf-8") == "fresh"
+    # Old file should still exist (we only clean up based on retention_days)
+    assert old.exists()
+    assert old.read_text(encoding="utf-8") == "yesterday-data"
+    
+    # New file for today should be created
+    today_file = tmp_path / "metrics.20260829.log"
+    assert today_file.exists()
+    assert today_file.read_text(encoding="utf-8") == "fresh"
 
 
-def test_rotating_file_appends_same_year(tmp_path: Path, monkeypatch) -> None:
+def test_rotating_file_appends_same_day(tmp_path: Path, monkeypatch) -> None:
     base = tmp_path / "metrics.log"
-    now = datetime(2025, 3, 1, tzinfo=timezone.utc)  # day 060
+    now = datetime(2026, 8, 29, tzinfo=timezone.utc)  # day 20260829
     monkeypatch.setattr("tgedr_observability.commons.datetime", _FakeDatetime(now))
 
-    existing = tmp_path / "metrics.060.log"
+    existing = tmp_path / "metrics.20260829.log"
     existing.write_text("earlier-today", encoding="utf-8")
-    same_year_ts = datetime(2025, 3, 1, 6, tzinfo=timezone.utc).timestamp()
-    os.utime(existing, (same_year_ts, same_year_ts))
 
     rotating = DayOfYearRotatingFile(base)
     rotating.write("-more")
@@ -152,17 +164,17 @@ def test_rotating_file_appends_same_year(tmp_path: Path, monkeypatch) -> None:
 
 def test_rotating_file_rotates_on_day_change(tmp_path: Path, monkeypatch) -> None:
     base = tmp_path / "metrics.log"
-    day1 = datetime(2025, 3, 1, tzinfo=timezone.utc)  # day 060
-    day2 = datetime(2025, 3, 2, tzinfo=timezone.utc)  # day 061
+    day1 = datetime(2026, 8, 28, tzinfo=timezone.utc)  # 20260828
+    day2 = datetime(2026, 8, 29, tzinfo=timezone.utc)  # 20260829
     monkeypatch.setattr("tgedr_observability.commons.datetime", _FakeDatetime([day1, day2]))
 
     rotating = DayOfYearRotatingFile(base)
-    rotating.write("day-one")  # uses day1 -> metrics.060.log
-    rotating.write("day-two")  # uses day2 -> rotates, closes old handle, metrics.061.log
+    rotating.write("day-one")  # uses day1 -> metrics.20260828.log
+    rotating.write("day-two")  # uses day2 -> rotates, closes old handle, metrics.20260829.log
     rotating.close()
 
-    assert (tmp_path / "metrics.060.log").read_text(encoding="utf-8") == "day-one"
-    assert (tmp_path / "metrics.061.log").read_text(encoding="utf-8") == "day-two"
+    assert (tmp_path / "metrics.20260828.log").read_text(encoding="utf-8") == "day-one"
+    assert (tmp_path / "metrics.20260829.log").read_text(encoding="utf-8") == "day-two"
 
 
 def test_rotating_file_close_idempotent(tmp_path: Path) -> None:
@@ -171,6 +183,71 @@ def test_rotating_file_close_idempotent(tmp_path: Path) -> None:
     rotating.close()
     rotating.close()
     assert rotating.closed is True
+
+
+def test_rotating_file_cleanup_old_files(tmp_path: Path, monkeypatch) -> None:
+    """Test that old files are deleted when retention_days is set."""
+    import datetime as dt
+    
+    base = tmp_path / "metrics.log"
+    now = datetime(2026, 8, 29, tzinfo=timezone.utc)  # 20260829
+    monkeypatch.setattr("tgedr_observability.commons.datetime", _FakeDatetime(now))
+
+    # Create files for the past 10 days
+    for i in range(10):
+        days_ago = 9 - i
+        past_date = now - dt.timedelta(days=days_ago)
+        past_date_str = past_date.strftime("%Y%m%d")
+        file_path = tmp_path / f"metrics.{past_date_str}.log"
+        file_path.write_text(f"data-{i}", encoding="utf-8")
+
+    # Create rotating file with 7-day retention
+    rotating = DayOfYearRotatingFile(base, retention_days=7)
+    rotating.write("today-data")
+    rotating.close()
+
+    # Check that files older than 7 days are deleted
+    remaining_files = list(tmp_path.glob("metrics.????????.log"))
+    # With 7-day retention: keep today + past 7 days = 8 files
+    assert len(remaining_files) == 8
+    
+    # Check that today's file exists
+    today_file = tmp_path / "metrics.20260829.log"
+    assert today_file.exists()
+
+
+def test_rotating_file_cleanup_handles_unparseable_filenames(tmp_path: Path, monkeypatch) -> None:
+    """Test that cleanup gracefully skips files with unparseable names."""
+    import datetime as dt
+    
+    base = tmp_path / "metrics.log"
+    now = datetime(2026, 8, 29, tzinfo=timezone.utc)  # 20260829
+    monkeypatch.setattr("tgedr_observability.commons.datetime", _FakeDatetime(now))
+
+    # Create 3 days of valid files: 2 days ago, yesterday, today
+    for i in range(3):
+        days_ago = 2 - i
+        past_date = now - dt.timedelta(days=days_ago)
+        past_date_str = past_date.strftime("%Y%m%d")
+        file_path = tmp_path / f"metrics.{past_date_str}.log"
+        file_path.write_text(f"data-{i}", encoding="utf-8")
+
+    # Create some files with non-date patterns of length 8 (should be skipped by isdigit check)
+    (tmp_path / "metrics.abcdefgh.log").write_text("invalid-data", encoding="utf-8")
+
+    # Create rotating file with 1-day retention
+    rotating = DayOfYearRotatingFile(base, retention_days=1)
+    rotating.write("today-data")
+    rotating.close()
+
+    # With 1-day retention: keep today (20260829) + yesterday (20260828) = 2 valid files
+    # 2 days ago (20260827) should be deleted
+    # The non-date file (metrics.abcdefgh.log) should remain intact
+    valid_dated_files = list(tmp_path.glob("metrics.????????.log"))
+    # 2 valid date files + 1 invalid name file = 3 files total with 8 chars
+    assert len(valid_dated_files) == 3
+    assert (tmp_path / "metrics.abcdefgh.log").exists()
+    assert not (tmp_path / "metrics.20260827.log").exists()
 
 
 class _FakeDatetime:

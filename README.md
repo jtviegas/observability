@@ -39,16 +39,14 @@ The Python package lives under `src/tgedr_observability` and currently exposes t
   - `TGEDR_OBSERVABILITY_EXPORTER_HEADERS`
   - `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE`
   - `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE`
-  - `TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION`
-- `OtlpConfig`: frozen dataclass with `service` (defaults to `"observability"`), optional `http_exporter_endpoint`, optional `http_exporter_headers`, optional `metrics_file_exporter_url`, optional `logs_file_exporter_url`, and `file_exporter_rotation` (bool, defaults to `False`).
+  - `TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS`
+- `OtlpConfig`: frozen dataclass with `service` (defaults to `"observability"`), optional `http_exporter_endpoint`, optional `http_exporter_headers`, optional `metrics_file_exporter_url`, optional `logs_file_exporter_url`, and `file_rotation_days` (optional positive integer, defaults to `None`).
 - `OtlpConfig.resolve_from_env()`: helper that builds an `OtlpConfig` from env vars.
-  - Returns a config only when the endpoint is present.
   - `service` falls back to `"observability"` when `TGEDR_OBSERVABILITY_SERVICE` is not set.
   - Parses headers from JSON when provided.
   - Includes `metrics_file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE` and `logs_file_exporter_url` from `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE` when set.
-  - Sets `file_exporter_rotation` to `True` when `TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION` is a truthy value (`1`, `true`, `yes`, `on`).
-  - Returns `None` when required env vars are missing.
-- `file exporter rotation`: when `file_exporter_rotation` is enabled, file exporters write to a day-of-year variant of the configured path (e.g. `metrics.log` -> `metrics.239.log`). Filenames repeat every year (`001`..`366`), giving yearly rotation; a same-day file left over from a previous year is overwritten on first write. Helpers `day_of_year_path()` and `DayOfYearRotatingFile` implement this.
+  - Sets `file_rotation_days` to positive `int` when `TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS` is set.
+- `file exporter rotation`: when `file_rotation_days` is set, file exporters write to a dated variant of the configured path in `YYYYMMDD` format (e.g. `metrics.log` -> `metrics.20260829.log`). When creating a new day's file, files older than `file_rotation_days` are automatically deleted. Helpers `dated_path()` and `DayOfYearRotatingFile` implement this.
 - `ObservabilityError`: package-specific exception used for observability validation errors.
 
 ### metrics.py
@@ -161,7 +159,7 @@ Environment-only bootstrap requires:
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_HEADERS` as a JSON object string.
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE` — path to a file where metrics are also written (used by `Metrics`; parent directories are created automatically).
 - Optional `TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE` — path to a file where logs are also written (used by `Logs`; parent directories are created automatically).
-- Optional `TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION` — set to a truthy value (`1`/`true`/`yes`/`on`) to enable day-of-year rotation of the file exporters (yearly rotation, e.g. `metrics.239.log`).
+- Optional `TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS` — set to a positive integer (e.g. `7`, `30`) to enable daily rotation with automatic cleanup of files older than that number of days (`YYYYMMDD` format, e.g. `metrics.20260829.log`).
 
 Example:
 
@@ -170,6 +168,7 @@ export TGEDR_OBSERVABILITY_SERVICE="orders-service"
 export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/metrics"
 export TGEDR_OBSERVABILITY_EXPORTER_HEADERS='{"Authorization":"Bearer your-token"}'
 export TGEDR_OBSERVABILITY_EXPORTER_METRICS_FILE="/var/log/myapp/metrics.log"
+export TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS="7"
 ```
 
 For logs, use the logs endpoint in `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT` and the logs file variable:
@@ -177,6 +176,7 @@ For logs, use the logs endpoint in `TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT` and t
 ```bash
 export TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT="http://localhost:4318/v1/logs"
 export TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE="/var/log/myapp/logs.log"
+export TGEDR_OBSERVABILITY_EXPORTER_FILE_ROTATION_DAYS="7"
 ```
 
 ### metrics
@@ -207,6 +207,7 @@ metrics_manager = Metrics.instance(
     service="orders-service",
     http_exporter_endpoint="http://localhost:4318/v1/metrics",
     metrics_file_exporter_url="/var/log/myapp/metrics.log",
+    file_rotation_days=7,
   ),
 )
 if metrics_manager is None:
@@ -259,6 +260,7 @@ logs_manager = Logs.instance(
     service="orders-service",
     http_exporter_endpoint="http://localhost:4318/v1/logs",
     logs_file_exporter_url="/var/log/myapp/logs.log",
+    file_rotation_days=7,
   ),
 )
 if logs_manager is None:

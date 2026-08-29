@@ -30,7 +30,7 @@ def module_lifecycle():
     original_headers = os.environ.get(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS)
 
     _tmpdir = tempfile.TemporaryDirectory()
-    os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE] = os.path.join(_tmpdir.name, "metrics.log")
+    os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE] = os.path.join(_tmpdir.name, "logs.log")
     os.environ[ENV_VAR_TGEDR_OBSERVABILITY_SERVICE] = SERVICE_NAME
     os.environ[ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_ENDPOINT] = LOCAL_LOGS_URL
     os.environ.pop(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_HEADERS, None)
@@ -91,7 +91,8 @@ def test_logger(module_lifecycle) -> None:
     flushed = get_logger_provider().force_flush(10000) # type: ignore
     assert flushed is True
 
-    log_file = Path(os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE)) # pyright: ignore[reportArgumentType]
+    log_file_folder = Path(os.getenv(ENV_VAR_TGEDR_OBSERVABILITY_EXPORTER_LOGS_FILE)).parent # pyright: ignore[reportArgumentType]
+    log_file = list(log_file_folder.rglob("*.log"))[0]
     content = log_file.read_text(encoding="utf-8")
     assert "This is an OpenTelemetry log record!" in content
 
@@ -152,20 +153,56 @@ def test_logs_file_exporter_rotation(module_lifecycle) -> None:
         otlp_config=OtlpConfig(
             service=SERVICE_NAME,
             logs_file_exporter_url=base_log,
-            file_exporter_rotation=True,
+            file_rotation_days=7,
         )
     )
     assert isinstance(o._log_file, DayOfYearRotatingFile)
     # Global logger provider is set once per process; earlier tests may own it,
-    # so exercise the wired rotating file directly to verify day-of-year output.
+    # so exercise the wired rotating file directly to verify YYYYMMDD output.
     o._log_file.write("rotation log record")
     o._log_file.flush()
 
-    today = datetime.now(tz=timezone.utc).timetuple().tm_yday
-    rotated = Path(rotation_dir.name) / f"logs.{today:03d}.log"
+    today = datetime.now(tz=timezone.utc).strftime("%Y%m%d")
+    rotated = Path(rotation_dir.name) / f"logs.{today}.log"
     assert rotated.exists()
     assert "rotation log record" in rotated.read_text(encoding="utf-8")
 
     o.shutdown()
     assert o._log_file is None
     rotation_dir.cleanup()
+
+
+def test_logs_file_exporter_no_rotation(module_lifecycle) -> None:
+    """Test file exporter with rotation disabled (file_rotation_days=None)."""
+    from tgedr_observability.commons import OtlpConfig
+
+    no_rotation_dir = tempfile.TemporaryDirectory()
+    base_log = os.path.join(no_rotation_dir.name, "logs.log")
+
+    o: Logs = Logs.instance()  # pyright: ignore[reportAssignmentType]
+    o.shutdown()
+
+    o = Logs.instance(  # pyright: ignore[reportAssignmentType]
+        otlp_config=OtlpConfig(
+            service=SERVICE_NAME,
+            logs_file_exporter_url=base_log,
+            file_rotation_days=None,
+        )
+    )
+    # When rotation is disabled, _log_file should be a regular file object
+    assert hasattr(o._log_file, "write")
+    assert hasattr(o._log_file, "flush")
+
+    # Verify the file exists with the exact name (no date suffix)
+    log_path = Path(base_log)
+    assert log_path.exists()
+
+    o._log_file.write("no rotation log record")
+    o._log_file.flush()
+
+    content = log_path.read_text(encoding="utf-8")
+    assert "no rotation log record" in content
+
+    o.shutdown()
+    assert o._log_file is None
+    no_rotation_dir.cleanup()

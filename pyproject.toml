@@ -1,6 +1,6 @@
 [project]
 name = "tgedr-observability"
-version = "0.0.5"
+version = "0.0.6"
 description = "simple observability solution"
 authors = [
     {name = "developer",email = "developer@email.com"}

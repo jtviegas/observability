@@ -70,8 +70,8 @@ def test_counter_fileexport(module_lifecycle) -> None:
     o.add_to_counter("test.fileexport.counter", 1, attributes={"key": "value"})
     assert o.force_flush() is True
 
-    log_file = Path(_METRICS_LOG)
-    content = log_file.read_text(encoding="utf-8")
+    metrics_file = list(Path(_METRICS_LOG).parent.rglob("*.log"))[0]
+    content = metrics_file.read_text(encoding="utf-8")
     assert "Counter metric for test.fileexport.counter" in content
 
 
@@ -174,20 +174,54 @@ def test_metrics_file_exporter_rotation(module_lifecycle) -> None:
         otlp_config=OtlpConfig(
             service=SERVICE_NAME,
             metrics_file_exporter_url=base_log,
-            file_exporter_rotation=True,
+            file_rotation_days=7,
         )
     )
     assert isinstance(o._log_file, DayOfYearRotatingFile)
     # Global meter provider is set once per process; earlier tests may own it,
-    # so exercise the wired rotating file directly to verify day-of-year output.
+    # so exercise the wired rotating file directly to verify YYYYMMDD output.
     o._log_file.write("Counter metric for test.rotation.counter")
     o._log_file.flush()
 
-    today = datetime.now(tz=timezone.utc).timetuple().tm_yday
-    rotated = Path(rotation_dir.name) / f"metrics.{today:03d}.log"
+    today = datetime.now(tz=timezone.utc).strftime("%Y%m%d")
+    rotated = Path(rotation_dir.name) / f"metrics.{today}.log"
     assert rotated.exists()
     assert "Counter metric for test.rotation.counter" in rotated.read_text(encoding="utf-8")
 
     o.shutdown()
     assert o._log_file is None
     rotation_dir.cleanup()
+
+
+def test_metrics_file_exporter_no_rotation(module_lifecycle) -> None:
+    """Test file exporter with rotation disabled (file_rotation_days=None)."""
+    no_rotation_dir = tempfile.TemporaryDirectory()
+    base_log = os.path.join(no_rotation_dir.name, "metrics.log")
+
+    o: Metrics = Metrics()  # pyright: ignore[reportAssignmentType]
+    o.shutdown()
+
+    o = Metrics.instance(  # pyright: ignore[reportAssignmentType]
+        otlp_config=OtlpConfig(
+            service=SERVICE_NAME,
+            metrics_file_exporter_url=base_log,
+            file_rotation_days=None,
+        )
+    )
+    # When rotation is disabled, _log_file should be a regular file object
+    assert hasattr(o._log_file, "write")
+    assert hasattr(o._log_file, "flush")
+
+    # Verify the file exists with the exact name (no date suffix)
+    log_path = Path(base_log)
+    assert log_path.exists()
+
+    o._log_file.write("Gauge metric for test.no_rotation.gauge")
+    o._log_file.flush()
+
+    content = log_path.read_text(encoding="utf-8")
+    assert "Gauge metric for test.no_rotation.gauge" in content
+
+    o.shutdown()
+    assert o._log_file is None
+    no_rotation_dir.cleanup()
