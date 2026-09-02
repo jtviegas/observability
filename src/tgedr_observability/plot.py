@@ -3,8 +3,13 @@
 The file exporter configured by `Metrics` writes `ConsoleMetricExporter`
 output: one JSON document per flush, appended to the file. A single file can
 therefore contain several concatenated JSON documents. These helpers parse that
-format and render a metric as a time series: one line per tag (attribute) value,
-with the export timestamp on the x-axis.
+format and render a metric as a series of lines (one per tag/attribute value).
+
+By default the x-axis is the export timestamp, producing a time series. When an
+`x_attr_key` tag is supplied, the x-axis is instead taken from the value of that
+tag, while each line still represents the value of another tag (`attr_key`) for
+its own value. This lets you plot e.g. a per-key metric against another numeric
+attribute rather than time.
 """
 
 from __future__ import annotations
@@ -23,6 +28,9 @@ from tgedr_observability.commons import ObservabilityError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+# What can sit on the x-axis: a timestamp, a numeric attribute, or a string.
+XAxisValue = datetime | str | float
 
 
 def _iter_json_documents(text: str) -> Iterator[dict]:
@@ -44,18 +52,23 @@ def load_metric_series(
     path: str | Path,
     metric_name: str | None = None,
     attr_key: str | None = None,
-) -> tuple[str, str, dict[str, list[tuple[datetime, float]]]]:
-    """Extract time series per tag value for one metric from a metrics file.
+    x_attr_key: str | None = None,
+) -> tuple[str, str, dict[str, list[tuple[XAxisValue, float]]]]:
+    """Extract series per tag value for one metric from a metrics file.
 
     Args:
         path: path to the metrics export file (one or more JSON documents).
         metric_name: metric to read; defaults to the first metric found.
-        attr_key: attribute used to split series; defaults to the first
-            attribute key found on a data point.
+        attr_key: attribute used to split series (one line per distinct value);
+            defaults to the first attribute key found on a data point.
+        x_attr_key: attribute whose value is used as the x-axis coordinate.
+            When set, the export timestamp is ignored; otherwise the timestamp
+            is used as the x-axis.
 
     Returns:
         A tuple of (metric_name, attr_key, series) where `series` maps each tag
-        value to a list of `(timestamp, value)` pairs sorted by timestamp.
+        value to a list of `(x_value, value)` pairs sorted by x_value. When
+        `x_attr_key` is not set, `x_value` is a timezone-aware datetime.
 
     Raises:
         ObservabilityError: when no matching metric is found.
@@ -64,7 +77,7 @@ def load_metric_series(
 
     resolved_name: str | None = None
     resolved_attr = attr_key
-    series: dict[str, list[tuple[datetime, float]]] = {}
+    series: dict[str, list[tuple[XAxisValue, float]]] = {}
 
     for document in _iter_json_documents(text):
         for resource_metric in document.get("resource_metrics", []):
@@ -78,8 +91,20 @@ def load_metric_series(
                         if resolved_attr is None:
                             resolved_attr = next(iter(attributes), "index")
                         label = str(attributes.get(resolved_attr, "?"))
-                        timestamp = datetime.fromtimestamp(point["time_unix_nano"] / 1_000_000_000, tz=UTC)
-                        series.setdefault(label, []).append((timestamp, float(point["value"])))
+                        if x_attr_key is not None:
+                            raw_x = attributes.get(x_attr_key, "?")
+                            if isinstance(raw_x, bool):
+                                x_value: XAxisValue = str(raw_x)
+                            elif isinstance(raw_x, int | float):
+                                x_value = float(raw_x)
+                            else:
+                                x_value = str(raw_x)
+                        else:
+                            x_value = datetime.fromtimestamp(
+                                point["time_unix_nano"] / 1_000_000_000,
+                                tz=UTC,
+                            )
+                        series.setdefault(label, []).append((x_value, float(point["value"])))
 
     if resolved_name is None:
         error_message = f"no matching metric found in {path}"
@@ -96,16 +121,21 @@ def plot_metric(
     metric_name: str | None = None,
     attr_key: str | None = None,
     save_path: str | Path | None = None,
+    x_attr_key: str | None = None,
 ) -> str | None:
-    """Read a metrics export file and plot a metric as a time series.
+    """Read a metrics export file and plot a metric as series of lines.
 
-    Draws one line per tag (attribute) value, with the export timestamp on the
-    x-axis.
+    Draws one line per tag (attribute) value (`attr_key`). By default the x-axis
+    is the export timestamp; when `x_attr_key` is provided, the x-axis is taken
+    from the value of that tag instead, and one line is drawn for each value of
+    `attr_key` across the distinct `x_attr_key` values.
 
     Args:
         path: path to the metrics export file.
         metric_name: metric to plot; defaults to the first metric found.
         attr_key: attribute used to split series; defaults to the first found.
+        x_attr_key: attribute whose value is used as the x-axis; when set, the
+            export timestamp is ignored. Defaults to the timestamp.
         save_path: when set, the figure is written here and the path returned;
             otherwise the figure is shown interactively and `None` is returned.
 
@@ -115,22 +145,31 @@ def plot_metric(
 
     Example:
         uv run python -c "from tgedr_observability.plot import plot_metric; plot_metric('../fda_faers/otel/metrics','new_rows', 'table', save_path='output.png')"
+
+    Example (x-axis from a tag):
+        # x-axis = 'day' tag, one line per 'table' tag.
+        uv run python -c "from tgedr_observability.plot import plot_metric; plot_metric('../fda_faers/otel/metrics','new_rows', attr_key='table', x_attr_key='day', save_path='output.png')"
     """
-    resolved_name, resolved_attr, series = load_metric_series(path, metric_name, attr_key)
+    resolved_name, resolved_attr, series = load_metric_series(path, metric_name, attr_key, x_attr_key)
 
     fig, ax = plt.subplots(figsize=(9, 5))
     for label in sorted(series):
         points = series[label]
-        timestamps = [ts for ts, _ in points]
+        x_values = [x for x, _ in points]
         values = [value for _, value in points]
-        ax.plot(timestamps, values, marker="o", linewidth=2, label=label)
+        ax.plot(x_values, values, marker="o", linewidth=2, label=label)
 
-    ax.set_title(f"{resolved_name} over time")
-    ax.set_xlabel("timestamp")
     ax.set_ylabel(resolved_name)
+    if x_attr_key is not None:
+        ax.set_title(f"{resolved_name} by {x_attr_key}")
+        ax.set_xlabel(x_attr_key)
+    else:
+        ax.set_title(f"{resolved_name} over time")
+        ax.set_xlabel("timestamp")
     ax.legend(title=resolved_attr)
     ax.grid(visible=True, linestyle="--", alpha=0.4)
-    fig.autofmt_xdate()
+    if x_attr_key is None:
+        fig.autofmt_xdate()
     fig.tight_layout()
 
     if save_path is not None:
