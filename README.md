@@ -122,16 +122,22 @@ file) and renders a metric as a line graph across its tag (attribute) values.
 
 Functions:
 
-- `load_metric_points(path, metric_name=None, attr_key=None)`: returns
-  `(metric_name, attr_key, [(label, value), ...])`. Handles files with multiple
-  concatenated JSON documents and keeps the last exported value per label.
-  Defaults to the first metric / first attribute found. Raises
+- `load_metric_series(path, metric_name=None, attr_key=None, x_attr_key=None, *, latest_only=False)`:
+  returns `(metric_name, attr_key, series)` where `series` maps each tag value
+  (or combination of `attr_key` + `x_attr_key`, when the latter is set) to a
+  list of `(x_value, value)` pairs sorted by `x_value`. By default the x-axis
+  is the export timestamp; when `x_attr_key` is set, the x-axis is taken from
+  the value of that tag instead and the series identity becomes the combination
+  of both tags (labels join the values with `|`, and the legend title lists the
+  keys). Handles files with multiple concatenated JSON documents. When
+  `latest_only` is True, only the points exported at the latest timestamp are
+  kept per series. Defaults to the first metric / first attribute found. Raises
   `ObservabilityError` when no matching metric is found.
-- `plot_metric(path, metric_name=None, attr_key=None, save_path=None)`: sorts
-  points by value (descending, since tag values are categorical) and plots a
-  line graph. When `save_path` is set, the figure is written there and the path
-  returned; otherwise the figure is shown and `None` is returned. Uses a
-  non-interactive backend so it is safe in headless/CI environments.
+- `plot_metric(path, metric_name=None, attr_key=None, save_path=None, x_attr_key=None, *, latest_only=False)`:
+  draws one line per tag value (or per combination when `x_attr_key` is set)
+  and renders the graph. When `save_path` is set, the figure is written there
+  and the path returned; otherwise the figure is shown and `None` is returned.
+  Uses a non-interactive backend so it is safe in headless/CI environments.
 
 Example:
 
@@ -143,6 +149,12 @@ plot_metric("/var/log/myapp/metrics.log", save_path="new_rows.png")
 
 # or show interactively, choosing a specific metric and tag
 plot_metric("/var/log/myapp/metrics.log", metric_name="new_rows", attr_key="table")
+
+# plot only the most recent export per tag value
+plot_metric("/var/log/myapp/metrics.log", metric_name="new_rows", attr_key="table", latest_only=True)
+
+# plot the most recent export per tag combination (table + day)
+plot_metric("/var/log/myapp/metrics.log", metric_name="new_rows", attr_key="table", x_attr_key="day", latest_only=True)
 ```
 
 ## usage examples
